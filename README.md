@@ -7,10 +7,6 @@
 
 A lightweight Linux desktop application that provides system-wide voice-to-text input. Speak naturally and your words appear wherever your cursor is focused - in any application!
 
-*Warning: This application has only been tested on Ubuntu Linux.*
-
-![](screenshot.png)
-
 ## How It Works
 
 1. **Select Microphone** - click the gear to open Settings and pick your mic
