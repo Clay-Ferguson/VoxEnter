@@ -5,7 +5,7 @@
 [![faster-whisper](https://img.shields.io/badge/faster--whisper-Local_STT-purple)](https://github.com/SYSTRAN/faster-whisper)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE.md)
 
-A lightweight Linux desktop application that provides system-wide voice-to-text input. Speak naturally and your words appear wherever your cursor is focused - in any application!
+A lightweight Linux desktop application that provides system-wide voice-to-text input. Speak naturally and your words appear wherever your cursor is focused - in any application! This app runs as a tiny window that you keep open while while you work. The window has a Speech-to-Text checkbox. Whenever you click this checkbox, anything you speak gets immediately typed into whatever app has the keyboard focus.
 
 ## How It Works
 
