@@ -14,7 +14,7 @@ However, it's perfectly fine and probably preferable to keep the threshold set s
 ┌─────────────────────────────────────────────────┐
 │              PyQt6 Application                  │
 │  ┌──────────────────────────────────────────┐   │
-│  │  Control window: [☑ Mic]  [⚙ Settings]   │   │
+│  │  Control window: [☑ Speech-to-Text] [⚙]  │   │
 │  └──────────────────────────────────────────┘   │
 │                      │                          │
 │                      ▼                          │

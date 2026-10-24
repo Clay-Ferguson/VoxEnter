@@ -49,8 +49,16 @@ PHASE_COLORS = {
 # is glanced at rather than read. The icons are sized to sit at the same
 # visual weight rather than looking like afterthoughts next to it.
 ICON_PX = 22
-MIN_WINDOW_WIDTH = 200
 ICON_BUTTON_PX = 32
+
+# Wide enough for the title bar to show "Phonon". On GNOME Wayland, Qt's
+# adwaita decoration plugin centers the title across the full window width,
+# then clips it 8px short of the minimize button without eliding it. With
+# GNOME's three buttons on the right, the title only clears that clip at about
+# 274px plus the title's own width (~65px at 1.25x text scaling) in surface
+# width, which is about 22px more than this content width. At 200 all that
+# survived was a one-pixel sliver of the "P".
+MIN_WINDOW_WIDTH = 330
 
 
 def build_stylesheet() -> str:
@@ -72,7 +80,7 @@ def build_stylesheet() -> str:
     `QCheckBox::indicator` rule and is now `windowchrome.apply_checkboxes()`,
     shared with the other apps -- see `windowchrome/README.md` §12, which is
     also where the reason it is a style and not a stylesheet lives. What
-    remains this sheet's business is the font and the checked weight.
+    remains this sheet's business is the font size.
 
     Checking the mic deliberately does *not* recolor the label. It used to go
     red (`color: #e53935`), which fought the window's own phase colors -- the
@@ -86,7 +94,6 @@ def build_stylesheet() -> str:
     """
     rules = [
         f"QCheckBox {{ font-size: {UI_FONT_PX}px; }}",
-        "QCheckBox:checked { font-weight: bold; }",
         f"QToolButton#iconButton {{ min-width: {ICON_BUTTON_PX}px;"
         f" min-height: {ICON_BUTTON_PX}px; border-radius: 4px; }}",
     ]
@@ -196,7 +203,9 @@ class VoiceTyperWindow(QWidget):
         # Title bar with a close button only. CustomizeWindowHint drops the
         # default hint set, so the two hints after it are the whole menu:
         # no minimize, no maximize. The compositor decides whether to honor
-        # it, so this is a request, not a guarantee.
+        # it, so this is a request, not a guarantee. On GNOME Wayland Qt's own
+        # adwaita decoration ignores it and takes its buttons from GNOME's
+        # button-layout setting.
         self.setWindowFlags(
             Qt.WindowType.Window
             | Qt.WindowType.CustomizeWindowHint
@@ -242,7 +251,7 @@ class VoiceTyperWindow(QWidget):
         row = QHBoxLayout()
         row.setSpacing(4)
 
-        self.mic_checkbox = QCheckBox("Mic")
+        self.mic_checkbox = QCheckBox("Speech-to-Text")
         # The enlarged indicator is windowchrome's, shared with the other
         # apps. It has to be applied to the widget rather than written into
         # build_stylesheet(); §12 of that README says why.
@@ -361,7 +370,7 @@ class VoiceTyperWindow(QWidget):
         # repolish reaches exactly one widget. The background rule is on this
         # window, but the rule that flips the checkbox's text black for the
         # white phase is on the checkbox, so it has to be repolished too --
-        # without this the "Mic" label stays white on white.
+        # without this the "Speech-to-Text" label stays white on white.
         for widget in (self, self.mic_checkbox):
             widget.style().unpolish(widget)
             widget.style().polish(widget)
