@@ -1,7 +1,7 @@
-# Phonon - AI Coding Instructions
+# VoxEnter - AI Coding Instructions
 
 ## Project Overview
-Phonon provides **system-wide voice typing for Linux**: it listens to the microphone, transcribes speech locally with [faster-whisper](https://github.com/SYSTRAN/faster-whisper), and types the text into whatever application has keyboard focus.
+VoxEnter provides **system-wide voice typing for Linux**: it listens to the microphone, transcribes speech locally with [faster-whisper](https://github.com/SYSTRAN/faster-whisper), and types the text into whatever application has keyboard focus.
 
 **Philosophy**: Framework-light. PyQt6 + plain Python, no build step. Everything Python comes from PyPI as prebuilt wheels via `uv`.
 
@@ -32,15 +32,15 @@ XDG Remote Desktop Portal over QtDBus → keystrokes into the focused app
 - **Section markers**: `# ====` blocks organize each module
 - **Paths**: Always use `Path` from pathlib
 - **Logging**: Writes to `voice_typer.log` beside the package (overwritten each run)
-- **Config file**: `~/.config/phonon.yaml` stores user preferences (microphone, silence threshold, auto-off timeout) and the portal restore token
+- **Config file**: `~/.config/voxenter.yaml` stores user preferences (microphone, silence threshold, auto-off timeout, window width) and the portal restore token
 - **Device selection**: dropdown in the Settings dialog lets user pick microphone; saved to config file
-- **UI shape**: the main window is one row -- mic checkbox and a gear -- and never changes size. Settings open in a separate modeless dialog (`settings_dialog.py`). There is no in-window close button; the title bar's is the same size and a few pixels away
+- **UI shape**: the main window is one row -- mic checkbox and a gear -- and never resizes itself. The user can drag its width (default 400, saved as `window_width` in the config file on close); its height is fixed to the row. Settings open in a separate modeless dialog (`settings_dialog.py`). There is no in-window close button; the title bar's is the same size and a few pixels away
 - **Window chrome**: the title bar and window frame are the platform's own, unstyled. The mic checkbox's enlarged indicator comes from `windowchrome`, a library of ours in its own repository -- see the entries under "Deliberate non-obvious choices" below
 - **Thread bridge**: the PortAudio callback and whisper worker threads reach the UI through `pyqtSignal`, never by touching widgets directly
 
 ## Deliberate non-obvious choices - do not "fix" these
 
-- **The config file also holds `portal_restore_token`.** Renaming `phonon.yaml` would orphan it and force users through the Remote Desktop permission dialog again.
+- **The config file also holds `portal_restore_token`.** Renaming `voxenter.yaml` would orphan it and force users through the Remote Desktop permission dialog again.
 - **One shared `WhisperModel`, loaded once.** `get_model()` in `transcribe.py` loads it under a lock; `preload_model()` starts that on a background thread at launch so the window appears immediately. Worker threads share the model, and CTranslate2's single default worker makes overlapping `transcribe()` calls queue rather than collide.
 - **`faster_whisper` is imported lazily, inside `get_model()`.** It pulls in CTranslate2 and onnxruntime, and importing them at module scope would delay the window. It also keeps `transcribe.py` cheap to import for headless tests.
 - **`get_model()` tries `local_files_only=True` first.** Without it huggingface_hub contacts the Hub on every launch even when the model is cached. Only a missing model falls through to a download.
@@ -51,9 +51,8 @@ XDG Remote Desktop Portal over QtDBus → keystrokes into the focused app
 - **uint32 D-Bus arguments must be `QDBusArgument(v, QMetaType.Type.UInt)`.** A plain Python int marshals as int32 and the portal rejects the message. The rejection is only logged, so getting this wrong shows up as nothing being typed.
 - **`a{sv}` options are plain Python dicts.** Wrapping the values in `QDBusVariant` crashes xdg-desktop-portal outright.
 - **The RMS silence-detection state machine in `audio.py` is tuned**, not arbitrary. Changing the constants or the branch structure causes missed or spurious utterances.
-- **`_enforce_size()` re-`resize()`s the window from `resizeEvent`.** Mutter replays a stale size in the configure that comes with focus changes, and Qt applies it instead of clamping to the window's min/max, which used to collapse the Settings panel and make the widgets overlap. `setFixedSize()` cannot undo it -- it returns early when the min and max are already correct, which they are. Settings is now a separate dialog and the main window never resizes itself, so this should never fire; it is kept as a belt and logs when it corrects.
-- **The main window must never resize itself.** That is why Settings lives in `settings_dialog.py` rather than an expanding panel: a self-resizing, non-resizable Wayland toplevel is the rare path that produced the bug above. The dialog is deliberately *not* fixed-size, so it does not take that path.
-- **`MIN_WINDOW_WIDTH` is 330 because of the title bar, not the controls.** On GNOME Wayland, Qt's adwaita decoration centers the title across the whole window and clips it at the minimize button without eliding it. Below about 317px of content width the title is cut off, and at 200 only a one-pixel sliver of the "P" showed. Narrowing the window brings that sliver back.
+- **The main window must never resize itself.** That is why Settings lives in `settings_dialog.py` rather than an expanding panel. On Wayland, mutter replays a stale size in the configure that comes with focus changes, and a window that had resized itself got that stale size applied, which used to make the widgets overlap. Only the user changes the window's size, by dragging the frame.
+- **The window's minimum width is the controls', not the title's.** On GNOME Wayland, Qt's adwaita decoration clips the title without eliding it once the window is narrower than about 340px. That is accepted: the default width of 400 shows the whole title, and a user who drags it narrower can see what they are doing.
 - **The settings dialog never touches the config file or the recorder.** It validates input and emits signals; `window.py` applies them. Two of the three settings have live side effects (the threshold reaches a running recorder, a device change stops the mic), and the window is the only thing that owns both.
 - **The icon buttons are painted white once, at construction, and never change.** An icon is a pixmap and does not follow the stylesheet's `color` rule, so it has to be painted by hand -- but one fixed color is all this window needs, so it does not track the phase. Only the `-symbolic` theme icons are painted; the full-color fallbacks silhouette into a blob, so they are used as they ship.
 - **`on_processing_phase_changed` repolishes the mic checkbox as well as the window.** A repolish reaches exactly one widget, and the rule that flips the checkbox text black for the white phase lives on the checkbox.

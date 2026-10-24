@@ -9,8 +9,8 @@ so unlike the rest of the styling they are fixed hex values.
 The window is deliberately one row of controls and nothing else. Settings live
 in a separate dialog (see settings_dialog.py): this window sits on top of
 whatever you are dictating into, so every pixel it occupies covers up the real
-work, and -- see _enforce_size -- a window that resizes itself is the one
-thing this app must not do.
+work. The user sets its width by dragging the frame; the app itself never
+resizes it after it first appears.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ import time
 
 from PyQt6.QtCore import QSize, Qt, QTimer
 from PyQt6.QtGui import QColor, QIcon, QPainter, QPixmap
-from PyQt6.QtWidgets import (QApplication, QCheckBox, QHBoxLayout, QLayout,
+from PyQt6.QtWidgets import (QApplication, QCheckBox, QHBoxLayout,
                              QMessageBox, QSizePolicy, QSpacerItem, QStyle,
                              QToolButton, QVBoxLayout, QWidget)
 from windowchrome import apply_checkboxes
@@ -28,6 +28,7 @@ from windowchrome import apply_checkboxes
 from . import APP_NAME, UI_FONT_PX
 from .audio import AudioRecorder
 from .config import (DEFAULT_MIC_AUTO_OFF_TIMEOUT_S, DEFAULT_SILENCE_THRESHOLD,
+                     DEFAULT_WINDOW_WIDTH,
                      get_input_devices, load_config, save_config)
 from .keyboard import close_keyboard_injector, get_keyboard_injector, type_text
 from .settings_dialog import SettingsDialog
@@ -50,15 +51,6 @@ PHASE_COLORS = {
 # visual weight rather than looking like afterthoughts next to it.
 ICON_PX = 22
 ICON_BUTTON_PX = 32
-
-# Wide enough for the title bar to show "Phonon". On GNOME Wayland, Qt's
-# adwaita decoration plugin centers the title across the full window width,
-# then clips it 8px short of the minimize button without eliding it. With
-# GNOME's three buttons on the right, the title only clears that clip at about
-# 274px plus the title's own width (~65px at 1.25x text scaling) in surface
-# width, which is about 22px more than this content width. At 200 all that
-# survived was a one-pixel sliver of the "P".
-MIN_WINDOW_WIDTH = 330
 
 
 def build_stylesheet() -> str:
@@ -219,12 +211,13 @@ class VoiceTyperWindow(QWidget):
         layout.setSpacing(0)
         layout.addLayout(self._build_top_row())
 
-        # Not resizable: the window is exactly as big
-        # as its one row of controls. Nothing in it can change size any more,
-        # so unlike the old expanding Settings panel this never asks the
-        # window to resize itself. See _enforce_size.
-        layout.setSizeConstraint(QLayout.SizeConstraint.SetFixedSize)
-        self._pad_to_min_width()
+        # The width is the user's: it starts at the saved width (400 by
+        # default) and can be dragged down to what the controls need. The
+        # title bar may clip the title well before that; that is accepted,
+        # and the user can see it happening. The height is pinned to the one
+        # row of controls and is not saved.
+        self.setFixedHeight(self.sizeHint().height())
+        self.resize(self._get_window_width(), self.height())
 
         self._auto_off_timer = QTimer(self)
         self._auto_off_timer.setInterval(1000)
@@ -233,19 +226,6 @@ class VoiceTyperWindow(QWidget):
         QTimer.singleShot(0, self._auto_start_microphone)
 
     # -- construction ------------------------------------------------------
-
-    def _pad_to_min_width(self) -> None:
-        """Widen the row's spacer until the window is at least MIN_WINDOW_WIDTH.
-
-        SetFixedSize pins the window to its size hint, so growing the hint is
-        the only way to set a floor on the width.
-        """
-        deficit = MIN_WINDOW_WIDTH - self.sizeHint().width()
-        if deficit > 0:
-            self._row_spacer.changeSize(
-                deficit, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum
-            )
-            self.layout().invalidate()
 
     def _build_top_row(self) -> QHBoxLayout:
         row = QHBoxLayout()
@@ -259,13 +239,9 @@ class VoiceTyperWindow(QWidget):
         self.mic_checkbox.toggled.connect(self.on_mic_toggled)
         row.addWidget(self.mic_checkbox)
 
-        # A real spacer rather than addStretch: _pad_to_min_width gives it a
-        # minimum width, which is how the window reaches MIN_WINDOW_WIDTH
-        # without a setMinimumWidth that would fight SetFixedSize below.
-        self._row_spacer = QSpacerItem(
+        row.addItem(QSpacerItem(
             0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum
-        )
-        row.addItem(self._row_spacer)
+        ))
 
         self.settings_button = self._icon_button(
             GEAR_SYMBOLIC, GEAR_FALLBACK,
@@ -318,44 +294,6 @@ class VoiceTyperWindow(QWidget):
         self._settings_dialog.raise_()
         self._settings_dialog.activateWindow()
 
-    def resizeEvent(self, event) -> None:
-        super().resizeEvent(event)
-        self._enforce_size()
-
-    def _enforce_size(self) -> None:
-        """Undo any resize the window's own size constraints forbid.
-
-        Wayland compositors reply to a state change -- losing or regaining
-        focus, most visibly -- with a configure event carrying a size. Mutter
-        sends the size it last configured us at, and that size can be stale:
-        when the window resizes itself, mutter renders the new size but does
-        not record it, so the next configure arrives with the old one.
-
-        Qt applies that size verbatim instead of clamping it to the min/max
-        the window advertised, which used to squeeze the rows until the
-        Settings button overlapped Close. X11 does not do this, which is why
-        it only showed up on Wayland.
-
-        Now that Settings is a separate dialog, this window never changes its
-        own size, so this should never fire again. It is kept as a belt: it
-        logs when it corrects, so the log says whether that holds.
-
-        SetFixedSize keeps minimumSize() == maximumSize() == the size the
-        layout needs, so any other size can only have come from the
-        compositor. This cannot use setFixedSize(): it returns early when
-        neither the minimum nor the maximum changes, which is exactly this
-        case, and that is why re-asserting the constraints alone never fixed
-        it.
-        """
-        required = self.minimumSize()
-        if required != self.maximumSize() or self.size() == required:
-            return
-        log.debug(
-            f"Rejecting {self.size().width()}x{self.size().height()} window size; "
-            f"restoring {required.width()}x{required.height()}"
-        )
-        self.resize(required)
-
     # -- phase display -----------------------------------------------------
 
     def on_processing_phase_changed(self, phase: str) -> None:
@@ -393,6 +331,9 @@ class VoiceTyperWindow(QWidget):
         print(f"🎚️ Silence threshold set to {formatted}")
 
     # -- settings: auto-off timeout ---------------------------------------
+
+    def _get_window_width(self) -> int:
+        return int(self.config.get("window_width", DEFAULT_WINDOW_WIDTH))
 
     def _get_auto_off_timeout(self) -> int:
         return int(self.config.get("mic_auto_off_timeout", DEFAULT_MIC_AUTO_OFF_TIMEOUT_S))
@@ -540,6 +481,9 @@ class VoiceTyperWindow(QWidget):
         # open Qt has a window left and will not quit the app.
         if self._settings_dialog is not None:
             self._settings_dialog.close()
+        if self.width() != self._get_window_width():
+            self.config["window_width"] = self.width()
+            save_config(self.config)
         self.stop_recording()
         close_keyboard_injector()
         super().closeEvent(event)

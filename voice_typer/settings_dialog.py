@@ -1,11 +1,10 @@
 """The Settings dialog: what the main window used to expand to show.
 
-Split out of `window.py` so the main window can be a fixed row of icons. The
-main window is a utility that sits on top of whatever you are dictating into,
-so it should never grow, and -- more importantly -- never *resize itself*.
-A self-resizing non-resizable Wayland toplevel is the rare path that produced
-the stale-configure bug `_enforce_size()` in `window.py` exists to absorb; a
-second toplevel that the user can resize does not take that path at all.
+Split out of `window.py` so the main window can be a single row of controls.
+The main window is a utility that sits on top of whatever you are dictating
+into, so it should never grow, and -- more importantly -- never *resize
+itself*: on Wayland a self-resizing window gets stale sizes replayed back at it
+by mutter on focus changes, which once made its widgets overlap.
 
 This dialog is deliberately dumb. It owns widgets and input validation and
 nothing else: it never touches the config file and never sees the recorder.
@@ -103,7 +102,7 @@ class SettingsDialog(QDialog):
         self._silence_threshold = float(silence_threshold)
         self._auto_off_timeout = int(auto_off_timeout)
 
-        self.setWindowTitle("Phonon Settings")
+        self.setWindowTitle("VoxEnter Settings")
         self.setStyleSheet(build_dialog_stylesheet())
         # Modeless: the mic keeps running and the main window stays clickable
         # while this is open.

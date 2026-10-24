@@ -1,7 +1,7 @@
 """Continuous recording with silence detection.
 
 The RMS state machine in `_audio_callback` is tuned against real microphones
-and is carried over unchanged from Lingo, the app Phonon was derived from;
+and is carried over unchanged from Lingo, the app VoxEnter was derived from;
 drift here shows up as missed utterances or spurious ones, so resist
 "tidying" it.
 

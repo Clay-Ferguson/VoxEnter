@@ -29,18 +29,23 @@ DEFAULT_SILENCE_THRESHOLD = 0.005  # RMS below this is silence (raised to filter
 # (no successful transcription sent to the keyboard).
 DEFAULT_MIC_AUTO_OFF_TIMEOUT_S = 30
 
+# Starting width of the main window. The user can resize it; the width they
+# leave it at is saved on close and restored on the next launch.
+DEFAULT_WINDOW_WIDTH = 400
+
 CONFIG_DIR = Path.home() / ".config"
 
 # Also holds the saved portal_restore_token, so renaming this file would
 # orphan the token and force the user through the Remote Desktop permission
 # dialog again.
-CONFIG_FILE = CONFIG_DIR / "phonon.yaml"
+CONFIG_FILE = CONFIG_DIR / "voxenter.yaml"
 
 DEFAULT_CONFIG: dict[str, Any] = {
     "audio_device": None,  # None means system default
     "portal_restore_token": None,  # Saved token for XDG Remote Desktop Portal session persistence
     "silence_threshold": DEFAULT_SILENCE_THRESHOLD,
     "mic_auto_off_timeout": DEFAULT_MIC_AUTO_OFF_TIMEOUT_S,
+    "window_width": DEFAULT_WINDOW_WIDTH,
 }
 
 # =============================================================================
@@ -61,8 +66,8 @@ def load_config() -> dict[str, Any]:
         for key, value in DEFAULT_CONFIG.items():
             if key not in config:
                 config[key] = value
-        # Coerce the two numeric settings: they are the ones users hand-edit,
-        # so a stray string here must not crash the app on startup.
+        # Coerce the numeric settings: they are the ones users hand-edit, so a
+        # stray string here must not crash the app on startup.
         try:
             config["silence_threshold"] = float(config.get("silence_threshold", DEFAULT_SILENCE_THRESHOLD))
         except (TypeError, ValueError):
@@ -71,6 +76,10 @@ def load_config() -> dict[str, Any]:
             config["mic_auto_off_timeout"] = int(config.get("mic_auto_off_timeout", DEFAULT_MIC_AUTO_OFF_TIMEOUT_S))
         except (TypeError, ValueError):
             config["mic_auto_off_timeout"] = DEFAULT_MIC_AUTO_OFF_TIMEOUT_S
+        try:
+            config["window_width"] = int(config.get("window_width", DEFAULT_WINDOW_WIDTH))
+        except (TypeError, ValueError):
+            config["window_width"] = DEFAULT_WINDOW_WIDTH
         return config
     except Exception as e:
         log.error(f"Failed to load config: {e}")

@@ -859,7 +859,7 @@ wheels = [
 ]
 
 [[package]]
-name = "phonon"
+name = "voxenter"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

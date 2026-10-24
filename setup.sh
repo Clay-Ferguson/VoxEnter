@@ -1,5 +1,5 @@
 #!/bin/bash
-# Setup script for Phonon (PyQt6)
+# Setup script for VoxEnter (PyQt6)
 #
 # Installs system dependencies, downloads the whisper model, and installs the
 # desktop entry. The Python environment itself needs no separate step -- uv
@@ -10,7 +10,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-echo "🎤 Phonon - PyQt6 App Setup"
+echo "🎤 VoxEnter - PyQt6 App Setup"
 echo "==========================="
 echo ""
 
@@ -101,7 +101,7 @@ echo ""
 # Exec/Path/Icon are absolute paths, so the checked-in template is rewritten
 # for wherever this checkout actually lives.
 echo "🖼️  Installing desktop integration..."
-APP_ID="com.phonon.voicetyper"
+APP_ID="com.voxenter.voicetyper"
 DESKTOP_DIR="$HOME/.local/share/applications"
 
 chmod +x "$SCRIPT_DIR/run.sh"
@@ -110,7 +110,7 @@ mkdir -p "$DESKTOP_DIR"
 sed \
   -e "s|^Exec=.*|Exec=$SCRIPT_DIR/run.sh|" \
   -e "s|^Path=.*|Path=$SCRIPT_DIR|" \
-  -e "s|^Icon=.*|Icon=$SCRIPT_DIR/phonon-logo.png|" \
+  -e "s|^Icon=.*|Icon=$SCRIPT_DIR/voxenter-logo.png|" \
   "$SCRIPT_DIR/$APP_ID.desktop" > "$DESKTOP_DIR/$APP_ID.desktop"
 
 update-desktop-database "$DESKTOP_DIR" 2>/dev/null || true
@@ -118,7 +118,7 @@ update-desktop-database "$DESKTOP_DIR" 2>/dev/null || true
 echo "✅ Desktop integration installed!"
 
 echo ""
-echo "✅ Phonon setup complete!"
+echo "✅ VoxEnter setup complete!"
 echo ""
 echo "Start the app with: ./run.sh"
 echo ""

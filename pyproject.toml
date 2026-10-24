@@ -1,5 +1,5 @@
 [project]
-name = "phonon"
+name = "voxenter"
 version = "0.1.0"
 description = "PyQt6 system-wide voice-to-text input app"
 requires-python = ">=3.10"

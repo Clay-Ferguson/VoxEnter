@@ -1,4 +1,4 @@
-# Phonon: Voice Typer - PyQt6 Desktop App 🎤
+# VoxEnter: Voice Typer - PyQt6 Desktop App 🎤
 
 [![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python&logoColor=white)](voice_typer/)
 [![PyQt6](https://img.shields.io/badge/PyQt-6-41CD52?logo=qt&logoColor=white)](voice_typer/window.py)
@@ -54,7 +54,7 @@ There is no virtualenv to create by hand: `run.sh` lets uv build and refresh the
 The mic check box's enlarged indicator comes from **[windowchrome](https://github.com/Clay-Ferguson/windowchrome)**, a small reusable PyQt6 library kept in its own repository so several apps can share the same look. It is **not on PyPI**: `pyproject.toml` resolves it by path, at `../windowchrome`, so the checkout belongs beside this one:
 
 ```bash
-cd ..                      # the directory holding Phonon/
+cd ..                      # the directory holding VoxEnter/
 git clone https://github.com/Clay-Ferguson/windowchrome.git
 ```
 
@@ -62,8 +62,8 @@ giving:
 
 ```
 projects/
-├── Phonon/                <- you are here
-└── windowchrome/          <- must sit beside Phonon
+├── VoxEnter/                <- you are here
+└── windowchrome/          <- must sit beside VoxEnter
 ```
 
 If it is missing, `./run.sh` fails immediately with an unresolved path dependency rather than with anything subtle. The checkout is used in place — `uv` installs it editable, so there is nothing to build and an edit there is live here on the next run.

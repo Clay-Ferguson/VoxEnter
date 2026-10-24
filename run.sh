@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Phonon launcher.
+# VoxEnter launcher.
 #
 # uv builds/refreshes the virtualenv from pyproject.toml on every run, so there
 # is no install step. Everything Python -- PyQt6 and faster-whisper included --
@@ -14,7 +14,7 @@ HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 fail() {
   echo "Error: $1" >&2
   if [ ! -t 2 ] && command -v notify-send >/dev/null 2>&1; then
-    notify-send --app-name=Phonon "Phonon failed to start" "$1" || true
+    notify-send --app-name=VoxEnter "VoxEnter failed to start" "$1" || true
   fi
   exit 1
 }

@@ -53,7 +53,7 @@ pactl list sources short
 
 The whisper model is downloaded from Hugging Face the first time it is needed (`./setup.sh` does this ahead of time) and cached under `~/.cache/huggingface`. Check `voice_typer.log` for a `Model loaded in ...` line. If loading failed, the error is logged there too.
 
-Once the model is cached, Phonon loads it from disk and makes no network requests. To force a fresh download (for example, if the cached copy is corrupted), delete `~/.cache/huggingface/hub/models--Systran--faster-whisper-base.en` and run `./setup.sh` again.
+Once the model is cached, VoxEnter loads it from disk and makes no network requests. To force a fresh download (for example, if the cached copy is corrupted), delete `~/.cache/huggingface/hub/models--Systran--faster-whisper-base.en` and run `./setup.sh` again.
 
 ## Keyboard typing not working (Wayland)
 
@@ -63,7 +63,7 @@ This app uses the **XDG Remote Desktop Portal** for keyboard input on Wayland. O
 2. Click **Allow** to grant keyboard access
 3. **The permission is saved** - you won't see this dialog again (uses Portal v2 `persist_mode`)
 
-The restore token is stored in `~/.config/phonon.yaml`. If you ever need to reset permissions (e.g., after a system update breaks things), delete the `portal_restore_token` entry from that file.
+The restore token is stored in `~/.config/voxenter.yaml`. If you ever need to reset permissions (e.g., after a system update breaks things), delete the `portal_restore_token` entry from that file.
 
 If the permission dialog doesn't appear or typing still doesn't work:
 
@@ -96,4 +96,4 @@ If the microphone stops responding or behaves unexpectedly, check if:
 2. Close any other applications that might be using the microphone
 3. Restart this application (`./run.sh`)
 
-Your microphone selection is saved to `~/.config/phonon.yaml` and will be restored on restart.
+Your microphone selection is saved to `~/.config/voxenter.yaml` and will be restored on restart.

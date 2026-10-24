@@ -20,10 +20,10 @@ from .transcribe import COMPUTE_TYPE, DEVICE, MODEL_NAME, preload_model
 # =============================================================================
 
 # The log lives beside the package rather than inside it, keeping it at
-# Phonon/voice_typer.log where the docs say it is.
+# VoxEnter/voice_typer.log where the docs say it is.
 APP_DIR = Path(__file__).parent.parent.absolute()
 LOG_FILE = APP_DIR / "voice_typer.log"
-ICON = APP_DIR / "phonon-logo.png"
+ICON = APP_DIR / "voxenter-logo.png"
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -95,7 +95,7 @@ def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
     app.setApplicationDisplayName(APP_NAME)
-    # Ties the window to com.phonon.voicetyper.desktop so the dock and alt-tab
+    # Ties the window to com.voxenter.voicetyper.desktop so the dock and alt-tab
     # show our icon. Without it the Wayland app_id comes from argv[0]
     # ("python3") and matches nothing.
     app.setDesktopFileName(APP_ID)
