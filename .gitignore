@@ -1,0 +1,27 @@
+# Python virtual environment. uv builds .venv on every run.sh launch; it is
+# disposable and never committed. uv.lock IS committed - it is the lockfile,
+# not an artifact.
+.venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+.ruff_cache/
+
+# Temp files
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+# voice_typer.log is overwritten on every launch.
+*.log

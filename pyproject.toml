@@ -1,0 +1,26 @@
+[project]
+name = "phonon"
+version = "0.1.0"
+description = "PyQt6 system-wide voice-to-text input app"
+requires-python = ">=3.10"
+dependencies = [
+    "PyQt6>=6.6",
+    "sounddevice>=0.4.6",
+    "numpy>=1.21.0",
+    "PyYAML>=6.0",
+    "faster-whisper>=1.2",
+    "windowchrome",
+]
+
+# `windowchrome` is our own library of shared widget styling and it is not on
+# PyPI: it is resolved by path from a checkout of its own, which has to sit
+# next to this one -- `../windowchrome` -- or `uv run` fails with an
+# unresolved path dependency. `editable` so an edit there is live here on the
+# next run, with nothing to rebuild.
+[tool.uv.sources]
+windowchrome = { path = "../windowchrome", editable = true }
+
+# Not an installable package: uv only builds the virtualenv from the
+# dependencies above, and run.sh runs the code straight out of the tree.
+[tool.uv]
+package = false
