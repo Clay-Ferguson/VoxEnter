@@ -1,4 +1,4 @@
-# VoxEnter: Voice Typer - PyQt6 Desktop App 🎤
+# VoxEnter: Speech-to-Text Desktop App 🎤
 
 [![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python&logoColor=white)](voice_typer/)
 [![PyQt6](https://img.shields.io/badge/PyQt-6-41CD52?logo=qt&logoColor=white)](voice_typer/window.py)
