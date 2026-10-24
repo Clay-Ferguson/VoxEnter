@@ -1,0 +1,13 @@
+# The menu entry packaging/build-deb.sh installs, with these comment lines
+# dropped. The filename and StartupWMClass must match APP_ID in
+# voice_typer/__init__.py, or the dock shows a generic icon.
+[Desktop Entry]
+Name=VoxEnter
+Comment=System-wide voice-to-text input
+Exec=voxenter
+Icon=/usr/lib/voxenter/voxenter-logo.png
+Terminal=false
+Type=Application
+Categories=Utility;Accessibility;
+StartupNotify=false
+StartupWMClass=com.voxenter.voicetyper

@@ -25,3 +25,6 @@ Thumbs.db
 # Logs
 # voice_typer.log is overwritten on every launch.
 *.log
+
+# Debian package output from build.sh / packaging/build-deb.sh
+dist/

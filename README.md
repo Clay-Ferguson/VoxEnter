@@ -27,24 +27,20 @@ The window background reports what the pipeline is doing, so you can dictate wit
 
 Transcription runs entirely on your machine with **[faster-whisper](https://github.com/SYSTRAN/faster-whisper)**, using OpenAI's English-only `base.en` Whisper model. It runs on the CPU with int8 quantization, so no GPU is needed, and the model stays loaded in memory, so each utterance costs only the transcription itself.
 
-faster-whisper installs from PyPI as prebuilt wheels: there is nothing to compile. The model (~145MB) is downloaded once from Hugging Face and cached under `~/.cache/huggingface`. `./setup.sh` downloads it ahead of time; otherwise it is fetched the first time the app starts. After that it is loaded straight from the cache, and the app makes no network requests at all.
+faster-whisper installs from PyPI as prebuilt wheels: there is nothing to compile. The model (~145MB) is downloaded once from Hugging Face and cached under `~/.cache/huggingface`. It is fetched the first time the app starts, in the background while the window comes up. After that it is loaded straight from the cache, and the app makes no network requests at all.
 
-## Running
+## Running from the checkout
 
-This project uses [uv](https://docs.astral.sh/uv/) for Python environment management.
-
-### First-time setup
-
-Install uv (if not already installed):
+The Debian package (see [Installing](#installing)) is the way to install VoxEnter. To run it straight from this checkout instead — while working on it, say — you need [uv](https://docs.astral.sh/uv/) for the Python environment:
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-Then install the system dependencies (PortAudio, and the X/xkb libraries Qt's platform plugin needs), download the whisper model, and install the desktop entry:
+and the system libraries the PyPI wheels link against: PortAudio, and the X/xkb libraries Qt's platform plugin needs (`libxcb-cursor0` in particular; without it Qt fails with "could not load the Qt platform plugin xcb"):
 
 ```bash
-./setup.sh
+sudo apt install libportaudio2 libxcb-cursor0 libxkbcommon-x11-0
 ```
 
 There is no virtualenv to create by hand: `run.sh` lets uv build and refresh the environment on every launch.
@@ -79,6 +75,27 @@ If it is missing, `./run.sh` fails immediately with an unresolved path dependenc
 ```bash
 uv run python -m voice_typer
 ```
+
+## Installing
+
+```bash
+./build.sh
+```
+
+`build.sh` runs `packaging/build-deb.sh`, which builds `dist/voxenter_<version>_<arch>.deb`, then asks whether to install it with `sudo apt install --reinstall` (default no). To do the two steps by hand:
+
+```bash
+packaging/build-deb.sh
+sudo apt install --reinstall ./dist/voxenter_0.1.0_amd64.deb
+```
+
+`--reinstall` matters when installing over an earlier build: a rebuild keeps the version from `pyproject.toml`, and apt skips a `.deb` whose version is already installed without looking at its contents.
+
+The package installs a `voxenter` command and a menu entry, and runs the app from `/usr/lib/voxenter` on the system's `python3`. PyQt6 comes from the distribution's `python3-pyqt6`, and PortAudio from `libportaudio2`; `apt` installs both. faster-whisper and the native libraries under it aren't packaged by Debian or Ubuntu, so they are bundled: the exact versions in `uv.lock` are installed as prebuilt wheels for the build machine's `/usr/bin/python3`. That makes the package large (about 80MB, 420MB installed), architecture-specific, and tied to that Python's minor version — build it on the kind of system you are installing it on. The whisper model is not in the package; it is downloaded on first launch as described above. Installed, the app logs to `~/.local/state/voxenter/voice_typer.log`.
+
+Building needs `dpkg-deb`, `uv`, and the `windowchrome` sibling checkout, whose source is copied into the package. The Maintainer field comes from your `git config user.name` and `user.email`; override it with `VOXENTER_MAINTAINER="Name <email>"`.
+
+If you installed the desktop entry with the old `setup.sh`, remove `~/.local/share/applications/com.voxenter.voicetyper.desktop`: it takes precedence over the package's and keeps launching the checkout.
 
 ### Adding dependencies
 

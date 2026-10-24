@@ -6,6 +6,7 @@ Close the window with the title bar close button.
 from __future__ import annotations
 
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -20,10 +21,23 @@ from .transcribe import COMPUTE_TYPE, DEVICE, MODEL_NAME, preload_model
 # =============================================================================
 
 # The log lives beside the package rather than inside it, keeping it at
-# VoxEnter/voice_typer.log where the docs say it is.
+# VoxEnter/voice_typer.log where the docs say it is. Installed from the .deb,
+# that directory is /usr/lib/voxenter and not the user's to write, so the log
+# goes to the XDG state directory instead.
 APP_DIR = Path(__file__).parent.parent.absolute()
-LOG_FILE = APP_DIR / "voice_typer.log"
 ICON = APP_DIR / "voxenter-logo.png"
+
+
+def _log_file() -> Path:
+    if os.access(APP_DIR, os.W_OK):
+        return APP_DIR / "voice_typer.log"
+    state = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state")
+    log_dir = state / "voxenter"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    return log_dir / "voice_typer.log"
+
+
+LOG_FILE = _log_file()
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -63,7 +77,7 @@ def check_dependencies() -> list[str]:
         if not input_devices:
             errors.append("No audio input devices found")
     except OSError as e:
-        errors.append(f"PortAudio not available ({e}). Run ./setup.sh to install it.")
+        errors.append(f"PortAudio not available ({e}). Install it with: sudo apt install libportaudio2")
     except Exception as e:
         errors.append(f"Error querying audio devices: {e}")
 
@@ -79,7 +93,7 @@ def main() -> int:
         print("\n⚠️  Missing dependencies:")
         for error in errors:
             print(f"   - {error}")
-        print("\nRun ./setup.sh to install the system packages and download the model.")
+        print("\nSee \"Running from the checkout\" in README.md for the system packages.")
         return 1
 
     print("✅ All dependencies found. Starting application...")

@@ -23,15 +23,17 @@ XDG Remote Desktop Portal over QtDBus → keystrokes into the focused app
 ## Developer Commands
 
 ```bash
-./setup.sh   # First-time: system packages, model download, desktop entry
-./run.sh     # Launch the control window
+./run.sh     # Launch the control window from the checkout
+./build.sh   # Build dist/voxenter_<version>_<arch>.deb, then offer to install it
 ```
+
+`build.sh` is a wrapper around `packaging/build-deb.sh`, which does the building and smoke-tests the staged tree before packing it.
 
 ## Code Conventions
 
 - **Section markers**: `# ====` blocks organize each module
 - **Paths**: Always use `Path` from pathlib
-- **Logging**: Writes to `voice_typer.log` beside the package (overwritten each run)
+- **Logging**: Writes to `voice_typer.log` beside the package (overwritten each run); when that directory isn't writable, as in the installed `/usr/lib/voxenter`, to `~/.local/state/voxenter/voice_typer.log`
 - **Config file**: `~/.config/voxenter.yaml` stores user preferences (microphone, silence threshold, auto-off timeout, window width) and the portal restore token
 - **Device selection**: dropdown in the Settings dialog lets user pick microphone; saved to config file
 - **UI shape**: the main window is one row -- mic checkbox and a gear -- and never resizes itself. The user can drag its width (default 400, saved as `window_width` in the config file on close); its height is fixed to the row. Settings open in a separate modeless dialog (`settings_dialog.py`). There is no in-window close button; the title bar's is the same size and a few pixels away
@@ -62,6 +64,8 @@ XDG Remote Desktop Portal over QtDBus → keystrokes into the focused app
 - **Checking the mic does not recolor its label.** The window background is already reporting the pipeline's state in three colors chosen for the job, and a fourth color on the text would compete with it. The label keeps the theme's foreground in every state -- white on a dark desktop, black on a light one -- and the label keeps its normal weight too; the check mark alone shows the state. Do not pin it to a hex value: the 'typing' phase paints the window white, so a hard-coded white label would disappear into it, which is the very thing the `phase="typing"` rule exists to prevent.
 - **The title bar and window frame are the platform's own, and deliberately unstyled.** Coloring them on Wayland meant relying on undocumented Qt decoration-plugin internals and leaked into unrelated widgets. Do not reintroduce title-bar or frame coloring, and do not wrap the window in anything to paint a border: the phase colors live on the plain toplevel `QWidget#voiceTyperWindow`.
 
+- **The `.deb` takes PyQt6 from the distribution and vendors everything else.** faster-whisper, CTranslate2, onnxruntime and PyAV have no Debian packages, so `packaging/build-deb.sh` installs the `uv.lock` versions (minus PyQt6 and windowchrome) as wheels for `/usr/bin/python3` into `/usr/lib/voxenter/vendor`. That is why the package is architecture-specific and depends on `python3 (>= X.Y), python3 (<< X.Y+1)`: the wheels hold compiled extensions for that one Python. The launcher runs `python3 -I` with `vendor/` ahead of dist-packages, so the locked versions win over any distribution copy.
+
 ## Silence Detection Config
 
 ```python
@@ -80,7 +84,7 @@ MIN_AUDIO_DURATION_S = 0.5         # Skip very short clips
 
 ## Dependencies
 
-- System: `portaudio19-dev`, `libxcb-cursor0`, `libxkbcommon-x11-0` (Ubuntu/Debian names; `./setup.sh` installs them)
+- System, for running from the checkout: `libportaudio2`, `libxcb-cursor0`, `libxkbcommon-x11-0` (Ubuntu/Debian names; README lists the `apt` command). The `.deb` depends on what it needs, so `apt` brings it along
 - Python (via pyproject.toml/uv): `PyQt6`, `sounddevice`, `numpy`, `PyYAML`, `faster-whisper`, and `windowchrome` -- the last of which is **not on PyPI**: it is resolved by path from `../windowchrome`
 - Keyboard injection: XDG Remote Desktop Portal via QtDBus (part of PyQt6; no PyGObject)
 

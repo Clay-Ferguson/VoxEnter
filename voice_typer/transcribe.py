@@ -35,7 +35,7 @@ log = logging.getLogger(__name__)
 
 # English-only base model. faster-whisper downloads it from Hugging Face
 # (Systran/faster-whisper-base.en) on first use and caches it under
-# ~/.cache/huggingface; setup.sh triggers that download ahead of time.
+# ~/.cache/huggingface. preload_model() starts that at launch.
 MODEL_NAME = "base.en"
 
 # No GPU path: CTranslate2's GPU support is CUDA-only. int8 runs a quantized

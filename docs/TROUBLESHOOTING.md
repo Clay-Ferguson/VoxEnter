@@ -51,9 +51,9 @@ pactl list sources short
 
 ## Nothing is transcribed, or the first utterance is slow
 
-The whisper model is downloaded from Hugging Face the first time it is needed (`./setup.sh` does this ahead of time) and cached under `~/.cache/huggingface`. Check `voice_typer.log` for a `Model loaded in ...` line. If loading failed, the error is logged there too.
+The whisper model is downloaded from Hugging Face the first time it is needed and cached under `~/.cache/huggingface`. Check `voice_typer.log` (in the checkout, or `~/.local/state/voxenter/` when installed from the `.deb`) for a `Model loaded in ...` line. If loading failed, the error is logged there too.
 
-Once the model is cached, VoxEnter loads it from disk and makes no network requests. To force a fresh download (for example, if the cached copy is corrupted), delete `~/.cache/huggingface/hub/models--Systran--faster-whisper-base.en` and run `./setup.sh` again.
+Once the model is cached, VoxEnter loads it from disk and makes no network requests. To force a fresh download (for example, if the cached copy is corrupted), delete `~/.cache/huggingface/hub/models--Systran--faster-whisper-base.en`; the next launch downloads it again.
 
 ## Keyboard typing not working (Wayland)
 
