@@ -240,7 +240,8 @@ class AudioRecorder(QObject):
 
         try:
             text = transcribe_audio(audio_data)
-            log.info(f">>> WHISPER RETURNED: '{text}'" if text else ">>> WHISPER RETURNED: (empty/None)")
+            # Only the length is logged, never the words: what people say is private.
+            log.info(f">>> WHISPER RETURNED: {len(text)} characters" if text else ">>> WHISPER RETURNED: (empty/None)")
             if text and text.strip():
                 # The window drives the phase back to idle via
                 # notify_typing_done() once the keystrokes have been sent.

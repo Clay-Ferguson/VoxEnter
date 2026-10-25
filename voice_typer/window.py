@@ -426,7 +426,7 @@ class VoiceTyperWindow(QWidget):
         if success:
             print("⌨️  Keyboard access granted - ready to type!")
         else:
-            print("⚠️  Keyboard access denied - text will be logged but not typed")
+            print("⚠️  Keyboard access denied - text will not be typed")
 
     # -- transcription results --------------------------------------------
 

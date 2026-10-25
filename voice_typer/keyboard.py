@@ -464,5 +464,5 @@ def close_keyboard_injector() -> None:
 
 def type_text(text: str, on_finished: Callable[[], None] | None = None) -> None:
     """Type text via the portal. Triggers a permission dialog on first use."""
-    print(f"\n🎯 TRANSCRIBED: {text}\n")
+    print(f"\n🎯 TRANSCRIBED: {len(text)} characters\n")
     get_keyboard_injector().type_text(text, on_finished=on_finished)
