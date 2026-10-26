@@ -90,4 +90,4 @@ MIN_AUDIO_DURATION_S = 0.5         # Skip very short clips
 
 ## Note to AI Agents
 
-Do not ever commit code to the 'git' repo yourself. This is always only done by human developers.
+Do not ever commit code to the 'git' repo yourself, unless the developer asks you to.
