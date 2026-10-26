@@ -47,6 +47,7 @@ BUS_NAME = "org.freedesktop.portal.Desktop"
 OBJ_PATH = "/org/freedesktop/portal/desktop"
 REMOTE_DESKTOP_IFACE = "org.freedesktop.portal.RemoteDesktop"
 REQUEST_IFACE = "org.freedesktop.portal.Request"
+SESSION_IFACE = "org.freedesktop.portal.Session"
 
 # SelectDevices device types: 1=keyboard, 2=pointer, 3=both
 DEVICE_TYPE_KEYBOARD = 1
@@ -135,6 +136,14 @@ class KeyboardInjector(QObject):
     returned by Start is saved to config so subsequent runs skip the permission
     dialog entirely. A refused or stale token is cleared so the next attempt
     prompts fresh rather than failing forever.
+
+    The desktop can close a session out from under a long-running app -- it
+    happened after a couple of idle hours, and from then on every keystroke
+    was refused with "AccessDenied: Invalid session" while the app still
+    believed it was connected. So the session is treated as disposable: the
+    portal's `Closed` signal drops it, and a keystroke the portal refuses
+    drops it too and re-queues the rest of the text, which brings up a fresh
+    session (silently, via the restore token) and types it there.
     """
 
     def __init__(self) -> None:
@@ -143,7 +152,11 @@ class KeyboardInjector(QObject):
         self.session_handle: str | None = None
         self.pending_text: str | None = None
         self._pending_callback: Callable[[], None] | None = None
+        # False once the pending text has already lost one session, so a
+        # fresh session that refuses it too gives up instead of looping.
+        self._pending_may_reconnect = True
         self._subscription: tuple | None = None
+        self._closed_subscription: tuple | None = None
         self._initializing = False
         self._initialized = False
         self._init_callback: Callable[[bool], None] | None = None
@@ -209,6 +222,7 @@ class KeyboardInjector(QObject):
             callback = self._pending_callback
             self.pending_text = None
             self._pending_callback = None
+            self._pending_may_reconnect = True
             if callback:
                 callback()
 
@@ -335,6 +349,7 @@ class KeyboardInjector(QObject):
         log.info("Remote Desktop session started successfully")
         self._initialized = True
         self._initializing = False
+        self._watch_for_close()
 
         if self._init_callback:
             self._init_callback(True)
@@ -343,9 +358,11 @@ class KeyboardInjector(QObject):
         if self.pending_text:
             text = self.pending_text
             callback = self._pending_callback
+            may_reconnect = self._pending_may_reconnect
             self.pending_text = None
             self._pending_callback = None
-            self._start_typing(text, callback)
+            self._pending_may_reconnect = True
+            self._start_typing(text, callback, may_reconnect)
 
     def _clear_restore_token(self) -> None:
         config = load_config()
@@ -354,22 +371,60 @@ class KeyboardInjector(QObject):
             save_config(config)
             log.debug("Cleared saved portal restore token")
 
+    # -- session loss ------------------------------------------------------
+
+    def _watch_for_close(self) -> None:
+        """Listen for the portal closing the session on its own."""
+        args = (BUS_NAME, self.session_handle, SESSION_IFACE, "Closed")
+        if not self.bus.connect(*args, self._on_session_closed):
+            log.warning(f"Failed to subscribe to Closed on {self.session_handle}")
+            return
+        self._closed_subscription = (args, self._on_session_closed)
+
+    @pyqtSlot(QDBusMessage)
+    def _on_session_closed(self, _message: QDBusMessage) -> None:
+        log.warning("Remote Desktop session was closed by the desktop; "
+                    "a new one will be started when needed")
+        self._drop_session()
+
+    def _drop_session(self) -> None:
+        """Forget a dead session so the next use starts a new one."""
+        if self._closed_subscription:
+            args, slot = self._closed_subscription
+            self.bus.disconnect(*args, slot)
+            self._closed_subscription = None
+        self.session_handle = None
+        self._initialized = False
+
     # -- typing ------------------------------------------------------------
 
     def type_text(self, text: str, on_finished: Callable[[], None] | None = None) -> None:
         """Type `text` as keystrokes, initializing the session if necessary."""
         if not self._initialized:
             log.warning("Keyboard injector not initialized, queuing text")
-            self.pending_text = text
-            self._pending_callback = on_finished
-            if not self._initializing:
-                self.initialize()
+            self._queue(text, on_finished, may_reconnect=True)
             return
 
         self._start_typing(text, on_finished)
 
-    def _start_typing(self, text: str, on_finished: Callable[[], None] | None) -> None:
-        """Send `text` one character at a time, spaced by KEY_INTERVAL_MS."""
+    def _queue(self, text: str, on_finished: Callable[[], None] | None,
+               may_reconnect: bool) -> None:
+        """Hold `text` until a session is up, starting one if needed."""
+        self.pending_text = text
+        self._pending_callback = on_finished
+        self._pending_may_reconnect = may_reconnect
+        if not self._initializing:
+            self.initialize()
+
+    def _start_typing(self, text: str, on_finished: Callable[[], None] | None,
+                      may_reconnect: bool = True) -> None:
+        """Send `text` one character at a time, spaced by KEY_INTERVAL_MS.
+
+        If the portal refuses a key because the session is gone, the rest of
+        the text is queued for a fresh session -- once. `may_reconnect` is
+        False on that second attempt, so a session that is refused straight
+        away gives up rather than reconnecting forever.
+        """
         if not text:
             if on_finished:
                 on_finished()
@@ -387,14 +442,25 @@ class KeyboardInjector(QObject):
                 # Unicode keysyms cover anything not in the table.
                 keysym = 0x01000000 | ord(char)
 
-            self._send_key(keysym, pressed=True)
-            self._send_key(keysym, pressed=False)
+            if not (self._send_key(keysym, pressed=True)
+                    and self._send_key(keysym, pressed=False)):
+                self._drop_session()
+                if may_reconnect:
+                    log.warning("Remote Desktop session is gone; reconnecting "
+                                f"to type the remaining {len(text) - index} characters")
+                    self._queue(text[index:], on_finished, may_reconnect=False)
+                else:
+                    log.error("A fresh Remote Desktop session was refused too; "
+                              f"dropping {len(text) - index} untyped characters")
+                    if on_finished:
+                        on_finished()
+                return
 
             QTimer.singleShot(KEY_INTERVAL_MS, lambda: type_char_at_index(index + 1))
 
         QTimer.singleShot(0, lambda: type_char_at_index(0))
 
-    def _send_key(self, keysym: int, pressed: bool) -> None:
+    def _send_key(self, keysym: int, pressed: bool) -> bool:
         """Send one key event, waiting for the portal to acknowledge it.
 
         This call is deliberately BLOCKING. Sending fire-and-forget with
@@ -402,10 +468,15 @@ class KeyboardInjector(QObject):
         round-trip as back-pressure, key events race ahead of the compositor
         and arrive scrambled and truncated -- "and so my fellow americans "
         was received as "and sy fo mellow ".
+
+        Returns False only when the session itself is unusable (none, or the
+        portal answers AccessDenied, which is how it reports a session the
+        desktop has closed). Any other error is logged and typing carries on
+        past that one key, as before.
         """
         if not self.session_handle:
             log.error("No session handle, cannot send key")
-            return
+            return False
 
         msg = QDBusMessage.createMethodCall(
             BUS_NAME, OBJ_PATH, REMOTE_DESKTOP_IFACE, "NotifyKeyboardKeysym"
@@ -421,6 +492,8 @@ class KeyboardInjector(QObject):
         if reply.type() == QDBusMessage.MessageType.ErrorMessage:
             log.error(f"Failed to send key {hex(keysym)} (pressed={pressed}): "
                       f"{reply.errorName()}: {reply.errorMessage()}")
+            return reply.errorName() != "org.freedesktop.DBus.Error.AccessDenied"
+        return True
 
     # -- teardown ----------------------------------------------------------
 
@@ -428,15 +501,14 @@ class KeyboardInjector(QObject):
         """Close the Remote Desktop session."""
         if self.session_handle and self.bus.isConnected():
             msg = QDBusMessage.createMethodCall(
-                BUS_NAME, self.session_handle, "org.freedesktop.portal.Session", "Close"
+                BUS_NAME, self.session_handle, SESSION_IFACE, "Close"
             )
             self.bus.call(msg)
             log.info("Remote Desktop session closed")
 
         self._unsubscribe()
         self._watchers.clear()
-        self.session_handle = None
-        self._initialized = False
+        self._drop_session()
 
 
 # =============================================================================
