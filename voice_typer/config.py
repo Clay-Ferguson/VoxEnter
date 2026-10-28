@@ -25,6 +25,10 @@ log = logging.getLogger(__name__)
 # values when speaking.
 DEFAULT_SILENCE_THRESHOLD = 0.005  # RMS below this is silence (raised to filter electrical spikes)
 
+# When on, the threshold is measured from the room's background noise at every
+# launch instead of being taken from the config file.
+DEFAULT_AUTO_ADJUST_SENSITIVITY = True
+
 # Automatically disable the microphone after this many seconds of inactivity
 # (no successful transcription sent to the keyboard).
 DEFAULT_MIC_AUTO_OFF_TIMEOUT_S = 30
@@ -44,6 +48,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "audio_device": None,  # None means system default
     "portal_restore_token": None,  # Saved token for XDG Remote Desktop Portal session persistence
     "silence_threshold": DEFAULT_SILENCE_THRESHOLD,
+    "auto_adjust_sensitivity": DEFAULT_AUTO_ADJUST_SENSITIVITY,
     "mic_auto_off_timeout": DEFAULT_MIC_AUTO_OFF_TIMEOUT_S,
     "window_width": DEFAULT_WINDOW_WIDTH,
 }
@@ -72,6 +77,9 @@ def load_config() -> dict[str, Any]:
             config["silence_threshold"] = float(config.get("silence_threshold", DEFAULT_SILENCE_THRESHOLD))
         except (TypeError, ValueError):
             config["silence_threshold"] = DEFAULT_SILENCE_THRESHOLD
+        # A stray string here must not be read as a choice either way.
+        if not isinstance(config.get("auto_adjust_sensitivity"), bool):
+            config["auto_adjust_sensitivity"] = DEFAULT_AUTO_ADJUST_SENSITIVITY
         try:
             config["mic_auto_off_timeout"] = int(config.get("mic_auto_off_timeout", DEFAULT_MIC_AUTO_OFF_TIMEOUT_S))
         except (TypeError, ValueError):

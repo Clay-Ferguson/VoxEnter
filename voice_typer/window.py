@@ -18,7 +18,7 @@ from __future__ import annotations
 import logging
 import time
 
-from PyQt6.QtCore import QSize, Qt, QTimer
+from PyQt6.QtCore import QSignalBlocker, QSize, Qt, QTimer
 from PyQt6.QtGui import QColor, QIcon, QPainter, QPixmap
 from PyQt6.QtWidgets import (QApplication, QCheckBox, QHBoxLayout,
                              QMessageBox, QSizePolicy, QSpacerItem, QStyle,
@@ -27,7 +27,8 @@ from windowchrome import apply_checkboxes
 
 from . import APP_NAME, UI_FONT_PX
 from .audio import AudioRecorder, NoiseCalibrator
-from .config import (DEFAULT_MIC_AUTO_OFF_TIMEOUT_S, DEFAULT_SILENCE_THRESHOLD,
+from .config import (DEFAULT_AUTO_ADJUST_SENSITIVITY,
+                     DEFAULT_MIC_AUTO_OFF_TIMEOUT_S, DEFAULT_SILENCE_THRESHOLD,
                      DEFAULT_WINDOW_WIDTH,
                      get_input_devices, load_config, save_config)
 from .keyboard import close_keyboard_injector, get_keyboard_injector, type_text
@@ -284,12 +285,16 @@ class VoiceTyperWindow(QWidget):
                 input_devices=self.input_devices,
                 current_device=self.config.get("audio_device"),
                 silence_threshold=self._get_silence_threshold(),
+                auto_adjust=self._get_auto_adjust(),
                 auto_off_timeout=self._get_auto_off_timeout(),
             )
             dialog.audio_device_changed.connect(self.on_audio_device_changed)
             dialog.silence_threshold_changed.connect(self._update_silence_threshold)
+            dialog.auto_adjust_changed.connect(self._update_auto_adjust)
             dialog.auto_off_timeout_changed.connect(self._update_auto_off_timeout)
             dialog.calibrate_requested.connect(self._start_calibration)
+            # A launch-time calibration may already be running.
+            dialog.set_calibrating(self._calibrator is not None)
             self._settings_dialog = dialog
 
         self._settings_dialog.show()
@@ -332,6 +337,18 @@ class VoiceTyperWindow(QWidget):
         formatted = f"{value:.4f}".rstrip("0").rstrip(".") or "0"
         print(f"🎚️ Silence threshold set to {formatted}")
 
+    def _get_auto_adjust(self) -> bool:
+        return bool(self.config.get("auto_adjust_sensitivity", DEFAULT_AUTO_ADJUST_SENSITIVITY))
+
+    def _update_auto_adjust(self, enabled: bool) -> None:
+        self.config["auto_adjust_sensitivity"] = enabled
+        save_config(self.config)
+        print(f"🎚️ Auto-adjust mic sensitivity {'on' if enabled else 'off'}")
+        # Measure now rather than waiting for the next launch, so turning it
+        # on visibly does something.
+        if enabled:
+            self._start_calibration()
+
     def _start_calibration(self) -> None:
         """Measure the room's noise and set the threshold from it.
 
@@ -344,14 +361,15 @@ class VoiceTyperWindow(QWidget):
             return
         self.stop_recording()
         self.mic_checkbox.setEnabled(False)
+        # Orange, as while the mic starts up: busy, and not listening.
+        self.on_processing_phase_changed("transcribing")
 
         calibrator = NoiseCalibrator(self.config.get("audio_device"))
         calibrator.finished.connect(self._on_calibration_finished)
         calibrator.failed.connect(self._on_calibration_failed)
         success, error_msg = calibrator.start()
         if not success:
-            self._end_calibration()
-            self._show_mic_error(error_msg or "Unknown microphone error.")
+            self._on_calibration_failed(error_msg or "Unknown microphone error.")
             return
 
         self._calibrator = calibrator
@@ -360,13 +378,18 @@ class VoiceTyperWindow(QWidget):
         print("🎚️ Calibrating silence threshold - stay quiet...")
 
     def _on_calibration_finished(self, threshold: float) -> None:
-        self._end_calibration()
-        # The dialog validates it and hands it back through
-        # silence_threshold_changed, like a typed value.
+        # Saved even in auto mode, so that unchecking auto-adjust starts the
+        # manual entry from the last measured value. Applied before
+        # _end_calibration, which starts the recorder with whatever is saved.
+        self._update_silence_threshold(threshold)
         if self._settings_dialog is not None:
-            self._settings_dialog.apply_calibrated_threshold(threshold)
+            self._settings_dialog.show_threshold(threshold)
+        self._end_calibration()
 
     def _on_calibration_failed(self, message: str) -> None:
+        # The mic could not be read, so the recorder would only fail the same
+        # way and show a second error: leave it off.
+        self.mic_checkbox.setChecked(False)
         self._end_calibration()
         self._show_mic_error(message)
 
@@ -375,6 +398,7 @@ class VoiceTyperWindow(QWidget):
         if self._settings_dialog is not None:
             self._settings_dialog.set_calibrating(False)
         self.mic_checkbox.setEnabled(True)
+        self.on_processing_phase_changed("idle")
         # Checked unless something turned the mic off meanwhile, such as a
         # device change in the dialog.
         if self.mic_checkbox.isChecked():
@@ -408,6 +432,14 @@ class VoiceTyperWindow(QWidget):
         QTimer.singleShot(100, self._complete_auto_start)
 
     def _complete_auto_start(self) -> None:
+        if self._get_auto_adjust():
+            # Checked without starting the recorder: the threshold has to be
+            # measured first, and the calibration starts the recorder when it
+            # ends because the box is checked.
+            with QSignalBlocker(self.mic_checkbox):
+                self.mic_checkbox.setChecked(True)
+            self._start_calibration()
+            return
         self.mic_checkbox.setChecked(True)  # triggers on_mic_toggled
         self.on_processing_phase_changed("idle")
 

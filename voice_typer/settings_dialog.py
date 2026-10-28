@@ -9,8 +9,8 @@ by mutter on focus changes, which once made its widgets overlap.
 This dialog is deliberately dumb. It owns widgets and input validation and
 nothing else: it never touches the config file and never sees the recorder.
 Validated values leave through signals, and the window applies them. That
-keeps the window the single owner of both, which matters because two of the
-three settings have live side effects on a running audio stream.
+keeps the window the single owner of both, which matters because most of the
+settings have live side effects on a running audio stream.
 """
 
 from __future__ import annotations
@@ -20,9 +20,9 @@ from typing import Any
 
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtGui import QPalette
-from PyQt6.QtWidgets import (QApplication, QComboBox, QDialog, QHBoxLayout,
-                             QLabel, QLineEdit, QPushButton, QVBoxLayout,
-                             QWidget)
+from PyQt6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog,
+                             QHBoxLayout, QLabel, QLineEdit, QPushButton,
+                             QVBoxLayout, QWidget)
 
 log = logging.getLogger(__name__)
 
@@ -41,6 +41,12 @@ THRESHOLD_HELP = (
     "lowering this threshold value. Auto-Calibrate listens to the room for a "
     "few seconds and picks a value just above its background noise; stay "
     "quiet while it does."
+)
+
+AUTO_ADJUST_HELP = (
+    "The silence threshold is measured from the room's background noise each "
+    "time VoxEnter starts. If the noise changes, such as a fan turning on or "
+    "off, restart VoxEnter. Uncheck this to set the threshold yourself."
 )
 
 CALIBRATE_LABEL = "Auto-Calibrate Silence Threshold"
@@ -89,9 +95,10 @@ class SettingsDialog(QDialog):
     # object rather than str: "System Default" is None, not a device name.
     audio_device_changed = pyqtSignal(object)
     silence_threshold_changed = pyqtSignal(float)
+    auto_adjust_changed = pyqtSignal(bool)
     auto_off_timeout_changed = pyqtSignal(int)
     # The dialog cannot measure anything itself: the window owns the mic, and
-    # answers with set_calibrating() and apply_calibrated_threshold().
+    # answers with set_calibrating() and show_threshold().
     calibrate_requested = pyqtSignal()
 
     def __init__(
@@ -100,6 +107,7 @@ class SettingsDialog(QDialog):
         input_devices: list[dict[str, Any]],
         current_device: str | None,
         silence_threshold: float,
+        auto_adjust: bool,
         auto_off_timeout: int,
     ) -> None:
         super().__init__(parent)
@@ -130,7 +138,22 @@ class SettingsDialog(QDialog):
         self.mic_dropdown.currentIndexChanged.connect(self._on_device_index_changed)
         layout.addLayout(self._labeled_row("Input device", self.mic_dropdown))
 
-        # Silence threshold
+        # Auto-adjust: when checked, the manual threshold controls below are
+        # replaced by a paragraph saying what happens instead.
+        self.auto_adjust_checkbox = QCheckBox("Auto-Adjust Mic Sensitivity")
+        self.auto_adjust_checkbox.setChecked(auto_adjust)
+        self.auto_adjust_checkbox.toggled.connect(self._on_auto_adjust_toggled)
+        layout.addWidget(self.auto_adjust_checkbox)
+        self.auto_adjust_help = self._help_label(AUTO_ADJUST_HELP)
+        layout.addWidget(self.auto_adjust_help)
+
+        # Silence threshold. In a container so auto-adjust can hide it whole.
+        self.threshold_controls = QWidget()
+        threshold_layout = QVBoxLayout(self.threshold_controls)
+        threshold_layout.setContentsMargins(0, 0, 0, 0)
+        threshold_layout.setSpacing(6)
+        layout.addWidget(self.threshold_controls)
+
         self.threshold_entry = QLineEdit()
         self.threshold_entry.setMaxLength(8)
         self.threshold_entry.setFixedWidth(80)
@@ -140,7 +163,7 @@ class SettingsDialog(QDialog):
         self.threshold_entry.setText(self._format_threshold(self._silence_threshold))
         # editingFinished covers Enter *and* focus-out.
         self.threshold_entry.editingFinished.connect(self._commit_threshold_entry)
-        layout.addLayout(self._labeled_row("Silence threshold", self.threshold_entry))
+        threshold_layout.addLayout(self._labeled_row("Silence threshold", self.threshold_entry))
 
         self.calibrate_button = QPushButton(CALIBRATE_LABEL)
         self.calibrate_button.setToolTip(
@@ -153,8 +176,9 @@ class SettingsDialog(QDialog):
         calibrate_row = QHBoxLayout()
         calibrate_row.addStretch(1)
         calibrate_row.addWidget(self.calibrate_button)
-        layout.addLayout(calibrate_row)
-        layout.addWidget(self._help_label(THRESHOLD_HELP))
+        threshold_layout.addLayout(calibrate_row)
+        threshold_layout.addWidget(self._help_label(THRESHOLD_HELP))
+        self._show_threshold_controls(not auto_adjust)
 
         # Auto-off timeout
         self.auto_off_entry = QLineEdit()
@@ -188,6 +212,9 @@ class SettingsDialog(QDialog):
         self._sized = True
         self.layout().activate()
         for label in self._help_labels:
+            # The hidden set of help text has not been polished by show(),
+            # and would be measured at the wrong font size without this.
+            label.ensurePolished()
             label.setFixedHeight(label.heightForWidth(HELP_TEXT_WIDTH))
         self.layout().activate()
         self.resize(self.sizeHint())
@@ -265,19 +292,33 @@ class SettingsDialog(QDialog):
         self._silence_threshold = value
         self.silence_threshold_changed.emit(value)
 
+    def _on_auto_adjust_toggled(self, checked: bool) -> None:
+        self._show_threshold_controls(not checked)
+        self.auto_adjust_changed.emit(checked)
+
+    def _show_threshold_controls(self, visible: bool) -> None:
+        """Swap between the manual threshold controls and the auto paragraph.
+
+        This is the one place the dialog resizes itself, and only its height,
+        only on a click. The main window must never do this (see window.py);
+        the dialog is a different case, and the alternative is a block of
+        empty space where the controls were.
+        """
+        self.threshold_controls.setVisible(visible)
+        self.auto_adjust_help.setVisible(not visible)
+        if self._sized:  # before the first show, showEvent does the sizing
+            self.layout().activate()
+            self.resize(self.width(), self.sizeHint().height())
+
     def set_calibrating(self, active: bool) -> None:
         """Show that the window is listening, and refuse a second request."""
         self.calibrate_button.setEnabled(not active)
         self.calibrate_button.setText(CALIBRATING_LABEL if active else CALIBRATE_LABEL)
 
-    def apply_calibrated_threshold(self, value: float) -> None:
-        """Enter a measured threshold as though the user had typed it.
-
-        Going through the entry's own commit path means the value gets the
-        same validation and leaves through the same signal as a typed one.
-        """
+    def show_threshold(self, value: float) -> None:
+        """Display a threshold the window measured and has already applied."""
+        self._silence_threshold = float(value)
         self.threshold_entry.setText(self._format_threshold(value))
-        self._commit_threshold_entry()
 
     def _commit_auto_off_entry(self) -> None:
         text = self.auto_off_entry.text().strip()
