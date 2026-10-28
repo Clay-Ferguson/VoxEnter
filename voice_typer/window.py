@@ -26,7 +26,7 @@ from PyQt6.QtWidgets import (QApplication, QCheckBox, QHBoxLayout,
 from windowchrome import apply_checkboxes
 
 from . import APP_NAME, UI_FONT_PX
-from .audio import AudioRecorder
+from .audio import AudioRecorder, NoiseCalibrator
 from .config import (DEFAULT_MIC_AUTO_OFF_TIMEOUT_S, DEFAULT_SILENCE_THRESHOLD,
                      DEFAULT_WINDOW_WIDTH,
                      get_input_devices, load_config, save_config)
@@ -177,6 +177,7 @@ class VoiceTyperWindow(QWidget):
         self.config = load_config()
         self._active_phase: str | None = None
         self._settings_dialog: SettingsDialog | None = None
+        self._calibrator: NoiseCalibrator | None = None
 
         # Auto-off timer state
         self._last_audio_detection_time: float | None = None
@@ -288,6 +289,7 @@ class VoiceTyperWindow(QWidget):
             dialog.audio_device_changed.connect(self.on_audio_device_changed)
             dialog.silence_threshold_changed.connect(self._update_silence_threshold)
             dialog.auto_off_timeout_changed.connect(self._update_auto_off_timeout)
+            dialog.calibrate_requested.connect(self._start_calibration)
             self._settings_dialog = dialog
 
         self._settings_dialog.show()
@@ -329,6 +331,54 @@ class VoiceTyperWindow(QWidget):
             self.recorder.set_silence_threshold(value)
         formatted = f"{value:.4f}".rstrip("0").rstrip(".") or "0"
         print(f"🎚️ Silence threshold set to {formatted}")
+
+    def _start_calibration(self) -> None:
+        """Measure the room's noise and set the threshold from it.
+
+        The recorder is stopped for the duration, for two reasons: the room
+        noise is exactly what it should not be acting on, and some devices
+        (raw ALSA ones) cannot be opened twice. The checkbox is left checked
+        but disabled, and the recorder comes back once calibration ends.
+        """
+        if self._calibrator is not None:
+            return
+        self.stop_recording()
+        self.mic_checkbox.setEnabled(False)
+
+        calibrator = NoiseCalibrator(self.config.get("audio_device"))
+        calibrator.finished.connect(self._on_calibration_finished)
+        calibrator.failed.connect(self._on_calibration_failed)
+        success, error_msg = calibrator.start()
+        if not success:
+            self._end_calibration()
+            self._show_mic_error(error_msg or "Unknown microphone error.")
+            return
+
+        self._calibrator = calibrator
+        if self._settings_dialog is not None:
+            self._settings_dialog.set_calibrating(True)
+        print("🎚️ Calibrating silence threshold - stay quiet...")
+
+    def _on_calibration_finished(self, threshold: float) -> None:
+        self._end_calibration()
+        # The dialog validates it and hands it back through
+        # silence_threshold_changed, like a typed value.
+        if self._settings_dialog is not None:
+            self._settings_dialog.apply_calibrated_threshold(threshold)
+
+    def _on_calibration_failed(self, message: str) -> None:
+        self._end_calibration()
+        self._show_mic_error(message)
+
+    def _end_calibration(self) -> None:
+        self._calibrator = None
+        if self._settings_dialog is not None:
+            self._settings_dialog.set_calibrating(False)
+        self.mic_checkbox.setEnabled(True)
+        # Checked unless something turned the mic off meanwhile, such as a
+        # device change in the dialog.
+        if self.mic_checkbox.isChecked():
+            self.start_recording()
 
     # -- settings: auto-off timeout ---------------------------------------
 
@@ -481,6 +531,9 @@ class VoiceTyperWindow(QWidget):
         # open Qt has a window left and will not quit the app.
         if self._settings_dialog is not None:
             self._settings_dialog.close()
+        if self._calibrator is not None:
+            self._calibrator.cancel()
+            self._calibrator = None
         if self.width() != self._get_window_width():
             self.config["window_width"] = self.width()
             save_config(self.config)

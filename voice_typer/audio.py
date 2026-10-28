@@ -19,7 +19,7 @@ from typing import Any
 
 import numpy as np
 import sounddevice as sd
-from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
 from .config import DEFAULT_SILENCE_THRESHOLD
 from .transcribe import CHANNELS, DTYPE, RECORD_SAMPLE_RATE, transcribe_audio
@@ -34,6 +34,53 @@ SILENCE_DURATION_S = 1.0  # Seconds of silence before transcription
 MIN_AUDIO_DURATION_S = 0.5  # Minimum audio length to process
 MIN_VOICED_DURATION_S = 0.2  # Minimum time above threshold to process
 SPEECH_CONFIRM_CHUNKS = 3  # Consecutive above-threshold chunks to confirm speech
+BLOCK_SIZE = 1024  # Frames per callback, so each RMS value covers ~21ms
+
+# =============================================================================
+# Threshold Calibration Tuning
+# =============================================================================
+
+CALIBRATION_DURATION_S = 3.0  # How long to listen to the room
+CALIBRATION_SETTLE_S = 0.3  # Discarded: stream start-up and the button's own click
+CALIBRATION_PERCENTILE = 95  # Noise level, ignoring the loudest few blocks
+CALIBRATION_MARGIN = 2.0  # Threshold = this times the noise level
+MIN_CALIBRATED_THRESHOLD = 0.002  # A dead-silent mic must still yield a usable value
+
+
+def block_rms(indata: np.ndarray) -> float:
+    """Loudness of one int16 block, normalized to 0..1."""
+    audio_float = indata.astype(np.float32) / 32768.0
+    return float(np.sqrt(np.mean(audio_float ** 2)))
+
+
+def threshold_from_noise(noise_rms: list[float]) -> float:
+    """Pick a silence threshold that the measured background noise stays under.
+
+    The constraint that matters is the end of an utterance: the recorder waits
+    for SILENCE_DURATION_S of *unbroken* below-threshold blocks, so noise that
+    pokes over the threshold even occasionally keeps resetting that timer and
+    the utterance never ends. Hence a high percentile rather than the mean,
+    with a margin on top. The percentile rather than the max, so one stray
+    click during the measurement does not drag the threshold up to where you
+    have to shout.
+    """
+    noise = float(np.percentile(noise_rms, CALIBRATION_PERCENTILE))
+    # Rounded to the precision the settings dialog shows, so what the user
+    # sees is exactly what is saved.
+    return round(max(noise * CALIBRATION_MARGIN, MIN_CALIBRATED_THRESHOLD), 4)
+
+
+def find_input_device(name: str) -> int | None:
+    """Index of the named input device, or None if it is not present."""
+    devices = sd.query_devices()
+    for i, d in enumerate(devices):
+        if d["name"] == name and d["max_input_channels"] > 0:
+            log.info(f"Using audio device: [{i}] {d['name']}")
+            return i
+    log.warning(f"Device '{name}' not found in available devices")
+    available = [d["name"] for d in devices if d["max_input_channels"] > 0]
+    log.info(f"Available input devices: {available}")
+    return None
 
 
 class AudioRecorder(QObject):
@@ -82,16 +129,8 @@ class AudioRecorder(QObject):
         # Find the audio device by name
         device = None
         if self.audio_device:
-            devices = sd.query_devices()
-            for i, d in enumerate(devices):
-                if d["name"] == self.audio_device and d["max_input_channels"] > 0:
-                    device = i
-                    log.info(f"Using audio device: [{i}] {d['name']}")
-                    break
+            device = find_input_device(self.audio_device)
             if device is None:
-                log.warning(f"Device '{self.audio_device}' not found in available devices")
-                available = [d["name"] for d in devices if d["max_input_channels"] > 0]
-                log.info(f"Available input devices: {available}")
                 self.is_running = False
                 return (False, f"Microphone '{self.audio_device}' not found.\n\nIt may be in use by another application (like Chrome).\n\nTry closing other apps that use the microphone and try again.")
 
@@ -103,7 +142,7 @@ class AudioRecorder(QObject):
                 channels=CHANNELS,
                 dtype=DTYPE,
                 callback=self._audio_callback,
-                blocksize=1024,
+                blocksize=BLOCK_SIZE,
                 device=device,
             )
             self.stream.start()
@@ -156,10 +195,9 @@ class AudioRecorder(QObject):
         if not self.is_running:
             return
 
-        # Calculate RMS (root mean square) for volume level.
-        # Normalize int16 to float for RMS calculation.
-        audio_float = indata.astype(np.float32) / 32768.0
-        rms = np.sqrt(np.mean(audio_float ** 2))
+        # RMS (root mean square) for volume level. Calibration measures with
+        # the same function, so the two can never disagree about loudness.
+        rms = block_rms(indata)
 
         # Track peak RMS for diagnostics
         self.peak_rms = max(self.peak_rms, rms)
@@ -252,3 +290,89 @@ class AudioRecorder(QObject):
         except Exception as e:
             log.error(f"Transcription error: {e}", exc_info=True)
             self._transition_to_phase("idle")
+
+
+# =============================================================================
+# Threshold Calibration
+# =============================================================================
+
+
+class NoiseCalibrator(QObject):
+    """Listens to the room for a few seconds and suggests a silence threshold.
+
+    Opens its own short-lived stream with the recorder's exact format and
+    block size, because the RMS of a block depends on its length: a threshold
+    measured any other way would not mean the same thing to the recorder.
+    """
+
+    finished = pyqtSignal(float)  # the suggested threshold
+    failed = pyqtSignal(str)  # a message to show the user
+
+    def __init__(self, audio_device: str | None = None) -> None:
+        super().__init__()
+        self.audio_device = audio_device
+        self.stream: Any = None
+        # Appended to on the PortAudio thread and read only after the stream
+        # has been stopped, which waits for the last callback; list.append is
+        # atomic, so no lock.
+        self.noise_rms: list[float] = []
+        self._blocks_to_skip = int(CALIBRATION_SETTLE_S * RECORD_SAMPLE_RATE / BLOCK_SIZE)
+
+    def start(self) -> tuple[bool, str | None]:
+        """Start listening. Returns (success, error_message), like AudioRecorder."""
+        device = None
+        if self.audio_device:
+            device = find_input_device(self.audio_device)
+            if device is None:
+                return (False, f"Microphone '{self.audio_device}' not found.")
+
+        try:
+            self.stream = sd.InputStream(
+                samplerate=RECORD_SAMPLE_RATE,
+                channels=CHANNELS,
+                dtype=DTYPE,
+                callback=self._audio_callback,
+                blocksize=BLOCK_SIZE,
+                device=device,
+            )
+            self.stream.start()
+        except Exception as e:
+            log.error(f"Failed to open audio stream for calibration: {e}")
+            self.stream = None
+            return (False, f"Failed to open microphone.\n\nError: {e}")
+
+        log.info(f"Calibrating silence threshold for {CALIBRATION_DURATION_S:.0f}s")
+        QTimer.singleShot(int(CALIBRATION_DURATION_S * 1000), self._finish)
+        return (True, None)
+
+    def cancel(self) -> None:
+        self._close_stream()
+
+    def _audio_callback(self, indata, frames, time_info, status) -> None:
+        if self._blocks_to_skip > 0:
+            self._blocks_to_skip -= 1
+            return
+        self.noise_rms.append(block_rms(indata))
+
+    def _close_stream(self) -> None:
+        if self.stream:
+            self.stream.stop()
+            self.stream.close()
+            self.stream = None
+
+    def _finish(self) -> None:
+        if self.stream is None:
+            return  # cancelled
+        self._close_stream()
+
+        if not self.noise_rms:
+            self.failed.emit("The microphone delivered no audio during calibration.")
+            return
+
+        threshold = threshold_from_noise(self.noise_rms)
+        log.info(
+            f"Calibration: {len(self.noise_rms)} blocks, "
+            f"p{CALIBRATION_PERCENTILE}={np.percentile(self.noise_rms, CALIBRATION_PERCENTILE):.6f}, "
+            f"max={max(self.noise_rms):.6f} -> threshold {threshold:.4f}"
+        )
+        self.finished.emit(threshold)

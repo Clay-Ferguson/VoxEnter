@@ -21,7 +21,8 @@ from typing import Any
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtGui import QPalette
 from PyQt6.QtWidgets import (QApplication, QComboBox, QDialog, QHBoxLayout,
-                             QLabel, QLineEdit, QVBoxLayout, QWidget)
+                             QLabel, QLineEdit, QPushButton, QVBoxLayout,
+                             QWidget)
 
 log = logging.getLogger(__name__)
 
@@ -37,8 +38,14 @@ THRESHOLD_HELP = (
     "Typical range is 0.001–0.02: lower values make the mic more sensitive; "
     "raise it to ignore background noise. Set the value as low as possible for "
     "best reliablility. If you have any problems with this application try "
-    "lowering this threshold value."
+    "lowering this threshold value. Auto-Calibrate listens to the room for a "
+    "few seconds and picks a value just above its background noise; stay "
+    "quiet while it does."
 )
+
+CALIBRATE_LABEL = "Auto-Calibrate Silence Threshold"
+CALIBRATING_LABEL = "Listening... stay quiet"
+
 
 AUTO_OFF_HELP = (
     "Automatically turn off the microphone after this many seconds without a "
@@ -83,6 +90,9 @@ class SettingsDialog(QDialog):
     audio_device_changed = pyqtSignal(object)
     silence_threshold_changed = pyqtSignal(float)
     auto_off_timeout_changed = pyqtSignal(int)
+    # The dialog cannot measure anything itself: the window owns the mic, and
+    # answers with set_calibrating() and apply_calibrated_threshold().
+    calibrate_requested = pyqtSignal()
 
     def __init__(
         self,
@@ -131,6 +141,19 @@ class SettingsDialog(QDialog):
         # editingFinished covers Enter *and* focus-out.
         self.threshold_entry.editingFinished.connect(self._commit_threshold_entry)
         layout.addLayout(self._labeled_row("Silence threshold", self.threshold_entry))
+
+        self.calibrate_button = QPushButton(CALIBRATE_LABEL)
+        self.calibrate_button.setToolTip(
+            "Measure the room's background noise and set the threshold just above it."
+        )
+        # Keeps the button from shrinking when its text swaps to the shorter
+        # "Listening..." label.
+        self.calibrate_button.setMinimumWidth(self.calibrate_button.sizeHint().width())
+        self.calibrate_button.clicked.connect(self.calibrate_requested)
+        calibrate_row = QHBoxLayout()
+        calibrate_row.addStretch(1)
+        calibrate_row.addWidget(self.calibrate_button)
+        layout.addLayout(calibrate_row)
         layout.addWidget(self._help_label(THRESHOLD_HELP))
 
         # Auto-off timeout
@@ -241,6 +264,20 @@ class SettingsDialog(QDialog):
             return
         self._silence_threshold = value
         self.silence_threshold_changed.emit(value)
+
+    def set_calibrating(self, active: bool) -> None:
+        """Show that the window is listening, and refuse a second request."""
+        self.calibrate_button.setEnabled(not active)
+        self.calibrate_button.setText(CALIBRATING_LABEL if active else CALIBRATE_LABEL)
+
+    def apply_calibrated_threshold(self, value: float) -> None:
+        """Enter a measured threshold as though the user had typed it.
+
+        Going through the entry's own commit path means the value gets the
+        same validation and leaves through the same signal as a typed one.
+        """
+        self.threshold_entry.setText(self._format_threshold(value))
+        self._commit_threshold_entry()
 
     def _commit_auto_off_entry(self) -> None:
         text = self.auto_off_entry.text().strip()
