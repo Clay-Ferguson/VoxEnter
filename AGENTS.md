@@ -92,11 +92,3 @@ MIN_AUDIO_DURATION_S = 0.5         # Skip very short clips
 
 Do not ever commit code to the 'git' repo yourself, unless the developer asks you to.
 
-## Use UGREP, not GREP or RIPGREP
-
-`ugrep` 7.5 is installed. Search with `ug -I --ignore-files -r` (skips binaries and gitignored files) instead of `grep`/`rg`, and use its Boolean queries rather than chaining searches: space is AND, `|` is OR, `-` is NOT. A phrase containing a space must be double-quoted (`'"import sounddevice"|rms'`); unquoted, it silently becomes an AND and returns wrong results.
-
-```bash
-ug -I --ignore-files -rn -%  'QDBusArgument UInt -QDBusVariant' .  # lines with both, without the third
-ug -I --ignore-files -rl -%% 'portal restore_token' .               # files containing both, anywhere in the file
-```
