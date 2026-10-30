@@ -43,8 +43,11 @@ BLOCK_SIZE = 1024  # Frames per callback, so each RMS value covers ~21ms
 CALIBRATION_DURATION_S = 3.0  # How long to listen to the room
 CALIBRATION_SETTLE_S = 0.3  # Discarded: stream start-up and the button's own click
 CALIBRATION_PERCENTILE = 95  # Noise level, ignoring the loudest few blocks
-CALIBRATION_MARGIN = 2.0  # Threshold = this times the noise level
-MIN_CALIBRATED_THRESHOLD = 0.002  # A dead-silent mic must still yield a usable value
+CALIBRATION_MARGIN_DB = 9.0  # How far above the noise level the threshold sits
+# In a quiet room the floor, not the margin, decides the threshold: the noise
+# there measures ~0.0003, and keyboard and mouse clicks reach ~0.0025, which a
+# floor of 0.002 let through as speech. Speech starts well above 0.005.
+MIN_CALIBRATED_THRESHOLD = 0.004
 
 
 def block_rms(indata: np.ndarray) -> float:
@@ -65,9 +68,10 @@ def threshold_from_noise(noise_rms: list[float]) -> float:
     have to shout.
     """
     noise = float(np.percentile(noise_rms, CALIBRATION_PERCENTILE))
+    margin = 10 ** (CALIBRATION_MARGIN_DB / 20)  # dB to an RMS amplitude ratio
     # Rounded to the precision the settings dialog shows, so what the user
     # sees is exactly what is saved.
-    return round(max(noise * CALIBRATION_MARGIN, MIN_CALIBRATED_THRESHOLD), 4)
+    return round(max(noise * margin, MIN_CALIBRATED_THRESHOLD), 4)
 
 
 def find_input_device(name: str) -> int | None:
