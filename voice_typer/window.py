@@ -21,11 +21,11 @@ import time
 from PyQt6.QtCore import QSignalBlocker, QSize, Qt, QTimer
 from PyQt6.QtGui import QColor, QIcon, QPainter, QPixmap
 from PyQt6.QtWidgets import (QApplication, QCheckBox, QHBoxLayout,
-                             QMessageBox, QSizePolicy, QSpacerItem, QStyle,
-                             QToolButton, QVBoxLayout, QWidget)
-from windowchrome import apply_checkboxes
+                             QSizePolicy, QSpacerItem, QStyle, QToolButton,
+                             QVBoxLayout, QWidget)
+from windowchrome import apply_checkboxes, apply_frame
 
-from . import APP_NAME, UI_FONT_PX
+from . import APP_NAME, UI_FONT_PX, messages
 from .audio import AudioRecorder, NoiseCalibrator
 from .config import (DEFAULT_AUTO_ADJUST_SENSITIVITY,
                      DEFAULT_MIC_AUTO_OFF_TIMEOUT_S, DEFAULT_SILENCE_THRESHOLD,
@@ -194,18 +194,12 @@ class VoiceTyperWindow(QWidget):
         # and every phase color silently does nothing.
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setWindowTitle(APP_NAME)
-        # Title bar with a close button only. CustomizeWindowHint drops the
-        # default hint set, so the two hints after it are the whole menu:
-        # no minimize, no maximize. The compositor decides whether to honor
-        # it, so this is a request, not a guarantee. On GNOME Wayland Qt's own
-        # adwaita decoration ignores it and takes its buttons from GNOME's
-        # button-layout setting.
-        self.setWindowFlags(
-            Qt.WindowType.Window
-            | Qt.WindowType.CustomizeWindowHint
-            | Qt.WindowType.WindowTitleHint
-            | Qt.WindowType.WindowCloseButtonHint
-        )
+        # windowchrome's title bar and border, in place of the system's. No
+        # maximize button: the height is pinned to one row of controls, so
+        # maximizing could only stretch the row across the screen. The frame
+        # sets the window's contents margins, so it has to come before the
+        # height is fixed from sizeHint() below, which includes them.
+        apply_frame(self, maximize=False)
         self.setStyleSheet(build_stylesheet())
 
         layout = QVBoxLayout(self)
@@ -214,10 +208,9 @@ class VoiceTyperWindow(QWidget):
         layout.addLayout(self._build_top_row())
 
         # The width is the user's: it starts at the saved width (400 by
-        # default) and can be dragged down to what the controls need. The
-        # title bar may clip the title well before that; that is accepted,
-        # and the user can see it happening. The height is pinned to the one
-        # row of controls and is not saved.
+        # default) and can be dragged down to what the controls need, the
+        # title eliding as it goes. The height is pinned to the title bar and
+        # the one row of controls, and is not saved.
         self.setFixedHeight(self.sizeHint().height())
         self.resize(self._get_window_width(), self.height())
 
@@ -502,7 +495,7 @@ class VoiceTyperWindow(QWidget):
         print("🔇 Microphone OFF")
 
     def _show_mic_error(self, message: str) -> None:
-        QMessageBox.warning(self, "Microphone Error", message)
+        messages.warning(self, "Microphone Error", message)
 
     def _on_keyboard_ready(self, success: bool) -> None:
         if success:

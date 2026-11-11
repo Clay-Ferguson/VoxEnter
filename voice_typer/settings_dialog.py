@@ -23,6 +23,7 @@ from PyQt6.QtGui import QPalette
 from PyQt6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog,
                              QHBoxLayout, QLabel, QLineEdit, QPushButton,
                              QVBoxLayout, QWidget)
+from windowchrome import apply_frame
 
 log = logging.getLogger(__name__)
 
@@ -121,6 +122,9 @@ class SettingsDialog(QDialog):
         self._auto_off_timeout = int(auto_off_timeout)
 
         self.setWindowTitle("VoxEnter Settings")
+        # windowchrome's title bar (close button only, as a dialog) and border.
+        # showEvent sizes the dialog from sizeHint(), which includes them.
+        apply_frame(self)
         self.setStyleSheet(build_dialog_stylesheet())
         # Modeless: the mic keeps running and the main window stays clickable
         # while this is open.

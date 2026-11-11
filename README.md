@@ -23,6 +23,8 @@ The window background reports what the pipeline is doing, so you can dictate wit
 | 🟠 orange | transcribing with whisper |
 | ⬜ white | typing the text out |
 
+The window and its dialogs draw their own navy title bar and a thin gray border, so they stand out against a dark desktop. Drag the title bar to move a window, and drag the main window's left or right edge to change its width (its height is fixed to the one row of controls); the Settings dialog resizes from any edge or corner. The main window has minimize and close buttons; dialogs and message boxes have a close button only. To keep the window on top of what you are dictating into, press **Alt+Space** while it has focus and choose *Always on Top* from GNOME's window menu.
+
 ## Speech Recognition
 
 Transcription runs entirely on your machine with **[faster-whisper](https://github.com/SYSTRAN/faster-whisper)**, using OpenAI's English-only `base.en` Whisper model. It runs on the CPU with int8 quantization, so no GPU is needed, and the model stays loaded in memory, so each utterance costs only the transcription itself.
@@ -47,7 +49,7 @@ There is no virtualenv to create by hand: `run.sh` lets uv build and refresh the
 
 #### The `windowchrome` checkout
 
-The mic check box's enlarged indicator comes from **[windowchrome](https://github.com/Clay-Ferguson/windowchrome)**, a small reusable PyQt6 library kept in its own repository so several apps can share the same look. It is **not on PyPI**: `pyproject.toml` resolves it by path, at `../windowchrome`, so the checkout belongs beside this one:
+The title bar and window border, and the mic check box's enlarged indicator, come from **[windowchrome](https://github.com/Clay-Ferguson/windowchrome)**, a small reusable PyQt6 library kept in its own repository so several apps can share the same look. It is **not on PyPI**: `pyproject.toml` resolves it by path, at `../windowchrome`, so the checkout belongs beside this one:
 
 ```bash
 cd ..                      # the directory holding VoxEnter/
@@ -117,6 +119,7 @@ The Qt-free logic is deliberately kept separate from the GUI, so the parts that 
 | `voice_typer/keyboard.py` | XDG Remote Desktop Portal keystroke injection (QtDBus) | D-Bus only |
 | `voice_typer/window.py` | the control window | yes |
 | `voice_typer/settings_dialog.py` | the settings dialog (widgets + validation only) | yes |
+| `voice_typer/messages.py` | message boxes in the app's window frame | yes |
 | `voice_typer/__main__.py` | dependency checks and startup | yes |
 
 ## Troubleshooting & Tips
