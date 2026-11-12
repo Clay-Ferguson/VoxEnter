@@ -19,7 +19,7 @@ import logging
 import time
 
 from PyQt6.QtCore import QSignalBlocker, QSize, Qt, QTimer
-from PyQt6.QtGui import QColor, QIcon, QPainter, QPixmap
+from PyQt6.QtGui import QColor, QIcon, QPainter, QPalette, QPixmap
 from PyQt6.QtWidgets import (QApplication, QCheckBox, QHBoxLayout,
                              QSizePolicy, QSpacerItem, QStyle, QToolButton,
                              QVBoxLayout, QWidget)
@@ -55,19 +55,22 @@ ICON_BUTTON_PX = 32
 
 
 def build_stylesheet() -> str:
-    """QSS for the window.
+    """QSS for the window's controls -- set on each of them, never on the window.
 
-    The phase backgrounds hang off a dynamic `phase` property rather than
-    separate stylesheets, so switching phase is a property set plus a repolish.
+    The phase *background* is not in here: it is the window's palette (see
+    on_processing_phase_changed). `windowchrome`'s frame paints the window's
+    background from the `Window` palette role, on a child widget covering the
+    whole window, so a stylesheet background on the window is painted over.
+    And a widget carrying a stylesheet stops passing its palette down to its
+    children -- the frame's included -- which is why this sheet goes on the
+    checkbox and the gear rather than on the window. The selectors can still
+    name the window as an ancestor, because a rule matches against the
+    widget's parents wherever the sheet is set.
+
     The 'typing' phase forces text black because its background is white, and
-    Qt does not repaint child text just because the ancestor's background
-    changed -- each child type has to be named.
-
-    Only widget types this window actually owns are named here. A stylesheet
-    set on a widget also applies to child dialogs, so a bare `QLabel` rule
-    would reach into the settings dialog and, during the white phase, black
-    out its text against its own dark background. The settings dialog has no
-    QCheckBox and no #iconButton, so nothing below can escape into it.
+    hangs off the window's dynamic `phase` property, so switching phase is a
+    property set plus a repolish. Qt does not repaint child text just because
+    the ancestor's background changed -- each child type has to be named.
 
     The indicator's *size* is deliberately not here. It was a
     `QCheckBox::indicator` rule and is now `windowchrome.apply_checkboxes()`,
@@ -90,9 +93,6 @@ def build_stylesheet() -> str:
         f"QToolButton#iconButton {{ min-width: {ICON_BUTTON_PX}px;"
         f" min-height: {ICON_BUTTON_PX}px; border-radius: 4px; }}",
     ]
-
-    for phase, color in PHASE_COLORS.items():
-        rules.append(f'QWidget#voiceTyperWindow[phase="{phase}"] {{ background: {color}; }}')
 
     # White background needs dark text on every child that draws any. The icon
     # buttons draw none: the gear is a white pixmap in every phase.
@@ -190,9 +190,6 @@ class VoiceTyperWindow(QWidget):
         self.input_devices = get_input_devices(rescan=True)
 
         self.setObjectName("voiceTyperWindow")
-        # Without this a plain QWidget ignores stylesheet backgrounds entirely,
-        # and every phase color silently does nothing.
-        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setWindowTitle(APP_NAME)
         # windowchrome's title bar and border, in place of the system's. No
         # maximize button: the height is pinned to one row of controls, so
@@ -200,7 +197,6 @@ class VoiceTyperWindow(QWidget):
         # sets the window's contents margins, so it has to come before the
         # height is fixed from sizeHint() below, which includes them.
         apply_frame(self, maximize=False)
-        self.setStyleSheet(build_stylesheet())
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 8, 12, 8)
@@ -227,6 +223,7 @@ class VoiceTyperWindow(QWidget):
         row.setSpacing(4)
 
         self.mic_checkbox = QCheckBox("Speech-to-Text")
+        self.mic_checkbox.setStyleSheet(build_stylesheet())
         # The enlarged indicator is windowchrome's, shared with the other
         # apps. It has to be applied to the widget rather than written into
         # build_stylesheet(); §12 of that README says why.
@@ -256,6 +253,7 @@ class VoiceTyperWindow(QWidget):
         """
         button = QToolButton()
         button.setObjectName("iconButton")
+        button.setStyleSheet(build_stylesheet())
         button.setAutoRaise(True)
         button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         button.setIconSize(QSize(ICON_PX, ICON_PX))
@@ -303,12 +301,21 @@ class VoiceTyperWindow(QWidget):
             return
         self._active_phase = target
 
+        # The background is the palette's `Window` role, which the frame
+        # paints (see build_stylesheet). A palette with only that role set
+        # leaves the rest to the theme; a default-constructed one sets nothing,
+        # handing the idle window back to the theme's own color.
+        palette = QPalette()
+        if target:
+            palette.setColor(QPalette.ColorRole.Window, QColor(PHASE_COLORS[target]))
+        self.setPalette(palette)
+
         self.setProperty("phase", target or "")
         # Qt only re-evaluates property-based selectors on a repolish, and a
-        # repolish reaches exactly one widget. The background rule is on this
-        # window, but the rule that flips the checkbox's text black for the
-        # white phase is on the checkbox, so it has to be repolished too --
-        # without this the "Speech-to-Text" label stays white on white.
+        # repolish reaches exactly one widget. The property is on this window,
+        # but the rule that flips the checkbox's text black for the white
+        # phase is on the checkbox, so it has to be repolished too -- without
+        # this the "Speech-to-Text" label stays white on white.
         for widget in (self, self.mic_checkbox):
             widget.style().unpolish(widget)
             widget.style().polish(widget)
