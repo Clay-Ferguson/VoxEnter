@@ -196,6 +196,18 @@ class SettingsDialog(QDialog):
         layout.addLayout(self._labeled_row("Auto-off timeout (s)", self.auto_off_entry))
         layout.addWidget(self._help_label(AUTO_OFF_HELP))
 
+        # Close does what the title bar's X does: hides the dialog, which the
+        # window keeps and shows again. Nothing to save -- edits already applied.
+        # Not autoDefault, so Enter in an entry commits it without closing.
+        close_button = QPushButton("Close")
+        close_button.setAutoDefault(False)
+        close_button.clicked.connect(self.close)
+        close_row = QHBoxLayout()
+        close_row.addStretch(1)
+        close_row.addWidget(close_button)
+        layout.addSpacing(6)
+        layout.addLayout(close_row)
+
         # No SizeConstraint here on purpose: the dialog stays user-resizable,
         # which is what keeps it off the self-resizing path described above.
 

@@ -100,6 +100,25 @@ def build_stylesheet() -> str:
     return "\n".join(rules)
 
 
+def keep_label_readable_when_disabled(checkbox: QCheckBox) -> None:
+    """Draw a disabled checkbox's label in the theme's normal text color.
+
+    Calibration disables the mic checkbox while the window is orange, and the
+    theme's disabled text is a mid gray that all but vanishes into the orange
+    -- the same orange is perfectly readable the rest of the time, with the
+    normal text color. The disabled indicator still shows that the box is
+    busy. Done in the palette rather than as a `:disabled` rule in the sheet,
+    because a sheet color would have to be a hex value, and the label must
+    keep the theme's foreground (see build_stylesheet).
+    """
+    palette = checkbox.palette()
+    for role in (QPalette.ColorRole.WindowText, QPalette.ColorRole.Text,
+                 QPalette.ColorRole.ButtonText):
+        palette.setColor(QPalette.ColorGroup.Disabled, role,
+                         palette.color(QPalette.ColorGroup.Active, role))
+    checkbox.setPalette(palette)
+
+
 # =============================================================================
 # Icons
 # =============================================================================
@@ -228,6 +247,7 @@ class VoiceTyperWindow(QWidget):
         # apps. It has to be applied to the widget rather than written into
         # build_stylesheet(); §12 of that README says why.
         apply_checkboxes(self.mic_checkbox)
+        keep_label_readable_when_disabled(self.mic_checkbox)
         self.mic_checkbox.toggled.connect(self.on_mic_toggled)
         row.addWidget(self.mic_checkbox)
 
