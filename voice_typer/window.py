@@ -41,8 +41,8 @@ log = logging.getLogger(__name__)
 # =============================================================================
 
 PHASE_COLORS = {
-    "speech-detected": "#27AE60",
-    "transcribing": "#E67E22",
+    "speech-detected": "#229954",
+    "transcribing": "#CA6F1E",
     "typing": "#FFFFFF",
 }
 
